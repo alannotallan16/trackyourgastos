@@ -1,5 +1,12 @@
 import Link from "next/link";
-import { getCategories, getExpenseSplits, getExpenses, getProfiles, getSettlements } from "@/lib/data";
+import {
+  getCategories,
+  getExpenseSplits,
+  getExpenses,
+  getProfiles,
+  getSettlementPayments,
+  getSettlements
+} from "@/lib/data";
 import { computeBalances, settlementSuggestions } from "@/lib/balances";
 import { formatMoney, formatDate } from "@/lib/format";
 import { CategoryPie, MonthlyTrendChart, PaidByBar } from "@/components/DashboardCharts";
@@ -8,18 +15,19 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { StatCard } from "@/components/ui/StatCard";
 import { ChartCard } from "@/components/ui/ChartCard";
 import { Badge, colorForCategory } from "@/components/ui/Badge";
-import { ArrowRight, Plus, TrendingUp, Users, Wallet } from "@/components/ui/icons";
+import { ArrowLeftRight, ArrowRight, Plus, TrendingUp, Users, Wallet } from "@/components/ui/icons";
 
 export const dynamic = "force-dynamic";
 
 const PERSON_ICON_BG = ["green", "blue", "purple"] as const;
 
 export default async function DashboardPage() {
-  const [profiles, expenses, splits, settlements, categories] = await Promise.all([
+  const [profiles, expenses, splits, settlements, payments, categories] = await Promise.all([
     getProfiles(),
     getExpenses(),
     getExpenseSplits(),
     getSettlements(),
+    getSettlementPayments(),
     getCategories()
   ]);
 
@@ -27,8 +35,17 @@ export default async function DashboardPage() {
   const thisMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
   const monthExpenses = expenses.filter((e) => e.expense_date.startsWith(thisMonth));
   const monthTotal = monthExpenses.reduce((a, b) => a + Number(b.total_amount), 0);
+  const openSettlementsCount = settlements.filter(
+    (s) => s.status === "open" || s.status === "partially_paid"
+  ).length;
 
-  const balances = computeBalances(profiles, expenses, splits, settlements);
+  const balances = computeBalances(
+    profiles,
+    expenses,
+    splits,
+    payments,
+    settlements.map((s) => ({ id: s.id, from_user_id: s.from_user_id, to_user_id: s.to_user_id }))
+  );
   const suggestions = settlementSuggestions(balances);
   const profilesById = new Map(profiles.map((p) => [p.id, p]));
   const categoriesById = new Map(categories.map((c) => [c.id, c]));
@@ -135,10 +152,14 @@ export default async function DashboardPage() {
         </ChartCard>
 
         <div className="card">
-          <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center justify-between mb-3 gap-2">
             <h2 className="text-sm font-semibold text-brand-navy">Who owes who</h2>
-            <Link href="/settlements" className="text-xs font-medium text-brand-green hover:underline inline-flex items-center gap-1">
-              Settle <ArrowRight className="h-3.5 w-3.5" />
+            <Link
+              href="/settlements"
+              className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 text-amber-800 ring-1 ring-amber-200 px-2.5 py-0.5 text-xs font-medium hover:brightness-95"
+            >
+              <ArrowLeftRight className="h-3.5 w-3.5" />
+              {openSettlementsCount} open
             </Link>
           </div>
           {suggestions.length === 0 ? (

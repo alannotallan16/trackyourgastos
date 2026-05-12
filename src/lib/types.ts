@@ -62,7 +62,13 @@ export interface ExpenseSplit {
   percentage: number | null;
   fixed_amount: number | null;
   calculated_amount: number;
+  settlement_status: SettlementStatus;
+  settlement_id: string | null;
+  settled_at: string | null;
 }
+
+export type SettlementStatus = "unpaid" | "in_settlement" | "settled";
+export type SettlementStateValue = "open" | "partially_paid" | "paid" | "cancelled";
 
 export interface ReceiptFile {
   id: string;
@@ -91,12 +97,41 @@ export interface RecurringExpense {
 
 export interface Settlement {
   id: string;
+  settlement_number: string;
   from_user_id: string;
   to_user_id: string;
+  currency: string;
+  total_amount: number;
+  amount_paid: number;
+  remaining_amount: number;
+  status: SettlementStateValue;
+  notes: string | null;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SettlementItem {
+  id: string;
+  settlement_id: string;
+  expense_id: string;
+  expense_split_id: string;
+  amount: number;
+  created_at: string;
+}
+
+export interface SettlementPayment {
+  id: string;
+  settlement_id: string;
+  payment_date: string;
   amount: number;
   currency: string;
-  settled_on: string;
+  payment_method: string | null;
   notes: string | null;
+  reference_number: string | null;
+  attachment_path: string | null;
+  created_by: string;
+  created_at: string;
 }
 
 export interface SplitInput {

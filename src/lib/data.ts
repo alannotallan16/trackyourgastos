@@ -7,6 +7,8 @@ import type {
   Profile,
   RecurringExpense,
   Settlement,
+  SettlementItem,
+  SettlementPayment,
   SplitPreset
 } from "./types";
 
@@ -52,8 +54,42 @@ export async function getExpenseSplits(): Promise<ExpenseSplit[]> {
 
 export async function getSettlements(): Promise<Settlement[]> {
   const supabase = createClient();
-  const { data } = await supabase.from("settlements").select("*").order("settled_on", { ascending: false });
+  const { data } = await supabase.from("settlements").select("*").order("created_at", { ascending: false });
   return (data as Settlement[]) ?? [];
+}
+
+export async function getSettlementItems(): Promise<SettlementItem[]> {
+  const supabase = createClient();
+  const { data } = await supabase.from("settlement_items").select("*");
+  return (data as SettlementItem[]) ?? [];
+}
+
+export async function getSettlementPayments(): Promise<SettlementPayment[]> {
+  const supabase = createClient();
+  const { data } = await supabase.from("settlement_payments").select("*").order("payment_date", { ascending: false });
+  return (data as SettlementPayment[]) ?? [];
+}
+
+export async function getSettlementDetail(id: string): Promise<{
+  settlement: Settlement | null;
+  items: SettlementItem[];
+  payments: SettlementPayment[];
+}> {
+  const supabase = createClient();
+  const [s, i, p] = await Promise.all([
+    supabase.from("settlements").select("*").eq("id", id).maybeSingle(),
+    supabase.from("settlement_items").select("*").eq("settlement_id", id),
+    supabase
+      .from("settlement_payments")
+      .select("*")
+      .eq("settlement_id", id)
+      .order("payment_date", { ascending: false })
+  ]);
+  return {
+    settlement: (s.data as Settlement) ?? null,
+    items: (i.data as SettlementItem[]) ?? [],
+    payments: (p.data as SettlementPayment[]) ?? []
+  };
 }
 
 export async function getRecurring(): Promise<RecurringExpense[]> {

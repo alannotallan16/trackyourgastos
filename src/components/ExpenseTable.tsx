@@ -1,17 +1,18 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { formatDate, formatMoney } from "@/lib/format";
-import type { Category, Expense, ExpenseSplit, Profile } from "@/lib/types";
+import type { Category, Expense, ExpenseSplit, Profile, Settlement } from "@/lib/types";
 import { Badge, colorForCategory } from "@/components/ui/Badge";
 import { ChevronLeft, ChevronRight, Paperclip } from "@/components/ui/icons";
+import { ExpenseDetailDrawer } from "@/components/ExpenseDetailDrawer";
 
 interface Props {
   expenses: Expense[];
   splits: ExpenseSplit[];
   profiles: Profile[];
   categories: Category[];
+  settlements: Settlement[];
 }
 
 type ExpenseStatus = "unpaid" | "in_settlement" | "partially_settled" | "settled";
@@ -43,18 +44,30 @@ type PageSize = 25 | 50 | 100 | "all";
 
 const PAGE_SIZES: PageSize[] = [25, 50, 100, "all"];
 
-export function ExpenseTable({ expenses, splits, profiles, categories }: Props) {
+type StatusFilter = "" | ExpenseStatus;
+
+const STATUS_FILTERS: { key: StatusFilter; label: string; color: "gray" | "orange" | "blue" | "green" | "navy" }[] = [
+  { key: "", label: "All", color: "navy" },
+  { key: "unpaid", label: "Unpaid", color: "gray" },
+  { key: "in_settlement", label: "In settlement", color: "orange" },
+  { key: "partially_settled", label: "Partially settled", color: "blue" },
+  { key: "settled", label: "Settled", color: "green" }
+];
+
+export function ExpenseTable({ expenses, splits, profiles, categories, settlements }: Props) {
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [paidBy, setPaidBy] = useState("");
   const [categoryId, setCategoryId] = useState("");
   const [merchant, setMerchant] = useState("");
   const [currency, setCurrency] = useState("");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("");
 
   const [sortKey, setSortKey] = useState<SortKey>("date");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [pageSize, setPageSize] = useState<PageSize>(50);
   const [page, setPage] = useState(1);
+  const [detailExpenseId, setDetailExpenseId] = useState<string | null>(null);
 
   const profilesById = useMemo(() => new Map(profiles.map((p) => [p.id, p])), [profiles]);
   const categoriesById = useMemo(() => new Map(categories.map((c) => [c.id, c])), [categories]);
@@ -67,6 +80,12 @@ export function ExpenseTable({ expenses, splits, profiles, categories }: Props) 
     return m;
   }, [splits]);
 
+  const statusByExpense = useMemo(() => {
+    const m = new Map<string, ExpenseStatus>();
+    for (const e of expenses) m.set(e.id, aggregateStatus(splitsByExpense.get(e.id) ?? []));
+    return m;
+  }, [expenses, splitsByExpense]);
+
   const filtered = useMemo(() => {
     return expenses.filter((e) => {
       if (from && e.expense_date < from) return false;
@@ -75,9 +94,28 @@ export function ExpenseTable({ expenses, splits, profiles, categories }: Props) 
       if (categoryId && e.category_id !== categoryId) return false;
       if (currency && e.currency !== currency) return false;
       if (merchant && !e.merchant.toLowerCase().includes(merchant.toLowerCase())) return false;
+      if (statusFilter && statusByExpense.get(e.id) !== statusFilter) return false;
       return true;
     });
-  }, [expenses, from, to, paidBy, categoryId, currency, merchant]);
+  }, [expenses, from, to, paidBy, categoryId, currency, merchant, statusFilter, statusByExpense]);
+
+  // Counts respect every filter except the status one, so the chip numbers
+  // reflect "how many of the rows I'm looking at fall into each bucket"
+  // rather than "how many in the whole dataset".
+  const statusCounts = useMemo(() => {
+    const base = expenses.filter((e) => {
+      if (from && e.expense_date < from) return false;
+      if (to && e.expense_date > to) return false;
+      if (paidBy && e.paid_by_user_id !== paidBy) return false;
+      if (categoryId && e.category_id !== categoryId) return false;
+      if (currency && e.currency !== currency) return false;
+      if (merchant && !e.merchant.toLowerCase().includes(merchant.toLowerCase())) return false;
+      return true;
+    });
+    const counts = { unpaid: 0, in_settlement: 0, partially_settled: 0, settled: 0 } as Record<ExpenseStatus, number>;
+    for (const e of base) counts[statusByExpense.get(e.id) ?? "unpaid"]++;
+    return { all: base.length, ...counts };
+  }, [expenses, from, to, paidBy, categoryId, currency, merchant, statusByExpense]);
 
   const sorted = useMemo(() => {
     const arr = [...filtered];
@@ -124,7 +162,7 @@ export function ExpenseTable({ expenses, splits, profiles, categories }: Props) 
 
   useEffect(() => {
     setPage(1);
-  }, [from, to, paidBy, categoryId, merchant, currency, sortKey, sortDir, pageSize]);
+  }, [from, to, paidBy, categoryId, merchant, currency, statusFilter, sortKey, sortDir, pageSize]);
 
   const currencies = useMemo(() => Array.from(new Set(expenses.map((e) => e.currency))), [expenses]);
   const totalAmount = filtered.reduce((a, b) => a + Number(b.total_amount), 0);
@@ -159,6 +197,29 @@ export function ExpenseTable({ expenses, splits, profiles, categories }: Props) 
 
   return (
     <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-2">
+        {STATUS_FILTERS.map((f) => {
+          const active = statusFilter === f.key;
+          const count = f.key === "" ? statusCounts.all : statusCounts[f.key];
+          return (
+            <button
+              key={f.key || "all"}
+              type="button"
+              onClick={() => setStatusFilter(f.key)}
+              aria-pressed={active}
+              className={
+                active
+                  ? "inline-flex items-center gap-1.5 rounded-full bg-brand-gradient text-white px-3 py-1 text-xs font-medium shadow-sm"
+                  : "inline-flex items-center gap-1.5 rounded-full bg-white border border-slate-200 text-brand-navy px-3 py-1 text-xs font-medium hover:bg-slate-50"
+              }
+            >
+              <span>{f.label}</span>
+              <span className={active ? "bg-white/20 rounded px-1.5 py-0.5 text-[10px]" : "text-slate-500 text-[10px]"}>{count}</span>
+            </button>
+          );
+        })}
+      </div>
+
       <div className="card grid grid-cols-2 md:grid-cols-6 gap-2">
         <input type="date" className="input" value={from} onChange={(e) => setFrom(e.target.value)} placeholder="From" />
         <input type="date" className="input" value={to} onChange={(e) => setTo(e.target.value)} placeholder="To" />
@@ -229,11 +290,22 @@ export function ExpenseTable({ expenses, splits, profiles, categories }: Props) 
               const sp = splitsByExpense.get(e.id) ?? [];
               const cat = e.category_id ? categoriesById.get(e.category_id) : null;
               return (
-                <tr key={e.id} className="hover:bg-slate-50 transition-colors">
+                <tr
+                  key={e.id}
+                  onClick={() => setDetailExpenseId(e.id)}
+                  className="hover:bg-slate-50 transition-colors cursor-pointer"
+                >
                   <td className="table-cell whitespace-nowrap">
-                    <Link href={`/expenses/${e.id}`} className="text-brand-navy font-medium hover:text-brand-green">
+                    <button
+                      type="button"
+                      className="text-brand-navy font-medium hover:text-brand-green"
+                      onClick={(ev) => {
+                        ev.stopPropagation();
+                        setDetailExpenseId(e.id);
+                      }}
+                    >
                       {formatDate(e.expense_date)}
-                    </Link>
+                    </button>
                   </td>
                   <td className="table-cell text-slate-700">{profilesById.get(e.paid_by_user_id)?.display_name ?? "—"}</td>
                   <td className="table-cell font-medium">{e.merchant}</td>
@@ -278,10 +350,11 @@ export function ExpenseTable({ expenses, splits, profiles, categories }: Props) 
             const sp = splitsByExpense.get(e.id) ?? [];
             const cat = e.category_id ? categoriesById.get(e.category_id) : null;
             return (
-              <Link
+              <button
                 key={e.id}
-                href={`/expenses/${e.id}`}
-                className="block px-4 py-3 hover:bg-slate-50"
+                type="button"
+                onClick={() => setDetailExpenseId(e.id)}
+                className="block w-full text-left px-4 py-3 hover:bg-slate-50"
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0 flex-1">
@@ -316,7 +389,7 @@ export function ExpenseTable({ expenses, splits, profiles, categories }: Props) 
                     <div className="text-[10px] uppercase tracking-wide text-slate-400">{e.currency}</div>
                   </div>
                 </div>
-              </Link>
+              </button>
             );
           })}
           <div className="px-4 py-3 bg-slate-50 flex items-center justify-between text-sm">
@@ -371,6 +444,22 @@ export function ExpenseTable({ expenses, splits, profiles, categories }: Props) 
           </div>
         </div>
       </div>
+
+      {detailExpenseId &&
+        (() => {
+          const e = expenses.find((x) => x.id === detailExpenseId);
+          if (!e) return null;
+          return (
+            <ExpenseDetailDrawer
+              expense={e}
+              splits={splitsByExpense.get(e.id) ?? []}
+              profiles={profiles}
+              categories={categories}
+              settlements={settlements}
+              onClose={() => setDetailExpenseId(null)}
+            />
+          );
+        })()}
     </div>
   );
 }

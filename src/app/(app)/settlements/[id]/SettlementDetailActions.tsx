@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { cancelSettlement, recordPayment } from "../actions";
 import { formatMoney } from "@/lib/format";
-import { Plus, X } from "@/components/ui/icons";
+import { createClient } from "@/lib/supabase/client";
+import { Paperclip, Plus, X } from "@/components/ui/icons";
 
 interface Props {
   settlementId: string;
@@ -14,11 +15,16 @@ interface Props {
   canCancel: boolean;
 }
 
+const RECEIPTS_BUCKET = process.env.NEXT_PUBLIC_SUPABASE_RECEIPTS_BUCKET || "receipts";
+
 export function SettlementDetailActions({ settlementId, remaining, currency, canRecordPayment, canCancel }: Props) {
   const router = useRouter();
+  const fileRef = useRef<HTMLInputElement>(null);
   const [open, setOpen] = useState(false);
   const [pending, start] = useTransition();
   const [err, setErr] = useState<string | null>(null);
+  const [file, setFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
 
   const [payment, setPayment] = useState({
     payment_date: new Date().toISOString().slice(0, 10),
@@ -29,9 +35,38 @@ export function SettlementDetailActions({ settlementId, remaining, currency, can
     allow_overpay: false
   });
 
-  function submitPayment(e: React.FormEvent) {
+  function closeAndReset() {
+    setOpen(false);
+    setFile(null);
+    setErr(null);
+    if (fileRef.current) fileRef.current.value = "";
+  }
+
+  async function submitPayment(e: React.FormEvent) {
     e.preventDefault();
     setErr(null);
+
+    let attachment_path: string | null = null;
+
+    if (file) {
+      try {
+        setUploading(true);
+        const supabase = createClient();
+        const cleanName = file.name.replace(/[^a-zA-Z0-9.\-_]/g, "_");
+        const path = `settlement-payments/${settlementId}/${Date.now()}-${cleanName}`;
+        const { error: upErr } = await supabase.storage
+          .from(RECEIPTS_BUCKET)
+          .upload(path, file, { upsert: false, contentType: file.type || "application/octet-stream" });
+        if (upErr) throw upErr;
+        attachment_path = path;
+      } catch (e: any) {
+        setUploading(false);
+        setErr(e?.message ?? "Failed to upload proof of payment.");
+        return;
+      }
+      setUploading(false);
+    }
+
     start(async () => {
       try {
         await recordPayment({
@@ -41,9 +76,10 @@ export function SettlementDetailActions({ settlementId, remaining, currency, can
           payment_method: payment.payment_method || null,
           reference_number: payment.reference_number || null,
           notes: payment.notes || null,
+          attachment_path,
           allow_overpay: payment.allow_overpay
         });
-        setOpen(false);
+        closeAndReset();
         router.refresh();
       } catch (e: any) {
         setErr(e?.message ?? "Failed to record payment.");
@@ -63,18 +99,20 @@ export function SettlementDetailActions({ settlementId, remaining, currency, can
     });
   }
 
+  const busy = pending || uploading;
+
   return (
     <div className="flex flex-wrap items-center gap-2">
       <button
         className="btn-primary text-sm"
         onClick={() => setOpen(true)}
-        disabled={!canRecordPayment || pending}
+        disabled={!canRecordPayment || busy}
       >
         <Plus className="h-4 w-4" />
         Record payment
       </button>
       {canCancel && (
-        <button className="btn-secondary text-sm" onClick={onCancel} disabled={pending}>
+        <button className="btn-secondary text-sm" onClick={onCancel} disabled={busy}>
           Cancel settlement
         </button>
       )}
@@ -84,7 +122,7 @@ export function SettlementDetailActions({ settlementId, remaining, currency, can
           <form className="bg-white rounded-2xl shadow-card-hover w-full max-w-md p-5 space-y-3" onSubmit={submitPayment}>
             <div className="flex items-center justify-between">
               <h2 className="font-semibold text-lg text-brand-navy">Record payment</h2>
-              <button type="button" onClick={() => setOpen(false)} aria-label="Close">
+              <button type="button" onClick={closeAndReset} aria-label="Close">
                 <X className="h-5 w-5 text-slate-500" />
               </button>
             </div>
@@ -140,6 +178,42 @@ export function SettlementDetailActions({ settlementId, remaining, currency, can
                   onChange={(e) => setPayment({ ...payment, notes: e.target.value })}
                 />
               </div>
+              <div className="col-span-2">
+                <label className="label">Proof of payment</label>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    className="btn-secondary !py-2 text-sm"
+                    onClick={() => fileRef.current?.click()}
+                  >
+                    <Paperclip className="h-4 w-4" />
+                    {file ? "Replace file" : "Attach file"}
+                  </button>
+                  {file && (
+                    <span className="text-xs text-slate-600 truncate flex-1">
+                      {file.name}{" "}
+                      <button
+                        type="button"
+                        className="ml-1 text-brand-danger hover:underline"
+                        onClick={() => {
+                          setFile(null);
+                          if (fileRef.current) fileRef.current.value = "";
+                        }}
+                      >
+                        remove
+                      </button>
+                    </span>
+                  )}
+                  <input
+                    ref={fileRef}
+                    type="file"
+                    accept="image/*,.pdf"
+                    className="hidden"
+                    onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+                  />
+                </div>
+                <p className="text-[10px] text-slate-400 mt-1">Optional. Image or PDF.</p>
+              </div>
               <label className="col-span-2 flex items-center gap-2 text-sm text-slate-600">
                 <input
                   type="checkbox"
@@ -153,8 +227,12 @@ export function SettlementDetailActions({ settlementId, remaining, currency, can
             {err && <p className="text-sm text-brand-danger">{err}</p>}
 
             <div className="flex justify-end gap-2 pt-2">
-              <button type="button" className="btn-secondary" onClick={() => setOpen(false)}>Cancel</button>
-              <button className="btn-primary" disabled={pending}>{pending ? "Saving…" : "Save"}</button>
+              <button type="button" className="btn-secondary" onClick={closeAndReset} disabled={busy}>
+                Cancel
+              </button>
+              <button className="btn-primary" disabled={busy}>
+                {uploading ? "Uploading…" : pending ? "Saving…" : "Save"}
+              </button>
             </div>
           </form>
         </div>

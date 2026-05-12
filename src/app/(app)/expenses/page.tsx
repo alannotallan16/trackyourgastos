@@ -1,17 +1,24 @@
 import Link from "next/link";
 import { ExpenseTable } from "@/components/ExpenseTable";
-import { getCategories, getExpenseSplits, getExpenses, getProfiles } from "@/lib/data";
+import {
+  getCategories,
+  getExpenseSplits,
+  getExpenses,
+  getProfiles,
+  getSettlements
+} from "@/lib/data";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Camera, Plus } from "@/components/ui/icons";
 
 export const dynamic = "force-dynamic";
 
 export default async function ExpensesPage() {
-  const [expenses, splits, profiles, categories] = await Promise.all([
+  const [expenses, splits, profiles, categories, settlements] = await Promise.all([
     getExpenses(),
     getExpenseSplits(),
     getProfiles(),
-    getCategories()
+    getCategories(),
+    getSettlements()
   ]);
   return (
     <div className="p-4 md:p-6 space-y-4">
@@ -30,7 +37,13 @@ export default async function ExpensesPage() {
           </>
         }
       />
-      <ExpenseTable expenses={expenses} splits={splits} profiles={profiles} categories={categories} />
+      <ExpenseTable
+        expenses={expenses}
+        splits={splits}
+        profiles={profiles}
+        categories={categories}
+        settlements={settlements}
+      />
     </div>
   );
 }

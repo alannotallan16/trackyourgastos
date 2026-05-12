@@ -263,7 +263,67 @@ export async function cancelBatch(batchId: string) {
 }
 
 // ---------------------------------------------------------------------------
-// Status rollup helper — call after any payment is recorded.
+// Delete a recorded payment (undo). Reverses the payment's contribution to
+// its result, rolls up the parent batch's status, and (if the batch is no
+// longer fully paid) returns included splits from "settled" to
+// "in_settlement". The batch itself stays open — only the cash leg is
+// reversed.
+// ---------------------------------------------------------------------------
+export async function deletePayment(paymentId: string) {
+  const supabase = createClient();
+  const {
+    data: { user }
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated.");
+
+  const { data: payment, error: pErr } = await supabase
+    .from("settlement_payments")
+    .select("id, settlement_batch_result_id, amount")
+    .eq("id", paymentId)
+    .maybeSingle();
+  if (pErr) throw pErr;
+  if (!payment) throw new Error("Payment not found.");
+
+  const { data: result, error: rErr } = await supabase
+    .from("settlement_batch_results")
+    .select("id, settlement_batch_id, amount, amount_paid")
+    .eq("id", payment.settlement_batch_result_id)
+    .maybeSingle();
+  if (rErr) throw rErr;
+  if (!result) throw new Error("Result not found.");
+
+  const { error: delErr } = await supabase
+    .from("settlement_payments")
+    .delete()
+    .eq("id", paymentId);
+  if (delErr) throw delErr;
+
+  const newPaid = Math.max(0, round2(Number(result.amount_paid) - Number(payment.amount)));
+  const newRemaining = Math.max(0, round2(Number(result.amount) - newPaid));
+  const newStatus: "open" | "partially_paid" | "paid" =
+    newPaid <= 0.005 ? "open" : newRemaining <= 0.005 ? "paid" : "partially_paid";
+
+  const { error: updErr } = await supabase
+    .from("settlement_batch_results")
+    .update({
+      amount_paid: newPaid,
+      remaining_amount: newRemaining,
+      status: newStatus
+    })
+    .eq("id", result.id);
+  if (updErr) throw updErr;
+
+  await rollupBatchStatus(result.settlement_batch_id);
+
+  revalidatePath("/settlements");
+  revalidatePath(`/settlements/${result.settlement_batch_id}`);
+  revalidatePath("/expenses");
+  revalidatePath("/dashboard");
+}
+
+// ---------------------------------------------------------------------------
+// Status rollup helper — call after any payment is recorded or deleted.
+// Keeps the batch status and split statuses in sync with the result rows.
 // ---------------------------------------------------------------------------
 async function rollupBatchStatus(batchId: string) {
   const supabase = createClient();
@@ -280,18 +340,26 @@ async function rollupBatchStatus(batchId: string) {
 
   await supabase.from("settlement_batches").update({ status: next }).eq("id", batchId);
 
-  // When the whole batch is paid, every included split graduates to settled.
+  // Sync split statuses with the batch status. Splits attached to this batch
+  // are either "settled" (when every result is paid) or "in_settlement"
+  // (when the batch is still open or partially paid). "unpaid" is reserved
+  // for cancelled batches.
+  const { data: items } = await supabase
+    .from("settlement_batch_items")
+    .select("expense_split_id")
+    .eq("settlement_batch_id", batchId);
+  const splitIds = (items ?? []).map((i: any) => i.expense_split_id);
+  if (splitIds.length === 0) return;
+
   if (allPaid) {
-    const { data: items } = await supabase
-      .from("settlement_batch_items")
-      .select("expense_split_id")
-      .eq("settlement_batch_id", batchId);
-    const splitIds = (items ?? []).map((i: any) => i.expense_split_id);
-    if (splitIds.length > 0) {
-      await supabase
-        .from("expense_splits")
-        .update({ settlement_status: "settled", settled_at: new Date().toISOString() })
-        .in("id", splitIds);
-    }
+    await supabase
+      .from("expense_splits")
+      .update({ settlement_status: "settled", settled_at: new Date().toISOString() })
+      .in("id", splitIds);
+  } else {
+    await supabase
+      .from("expense_splits")
+      .update({ settlement_status: "in_settlement", settled_at: null })
+      .in("id", splitIds);
   }
 }

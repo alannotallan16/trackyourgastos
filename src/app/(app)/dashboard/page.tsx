@@ -4,8 +4,9 @@ import {
   getExpenseSplits,
   getExpenses,
   getProfiles,
-  getSettlementPayments,
-  getSettlements
+  getSettlementBatchResults,
+  getSettlementBatches,
+  getSettlementPayments
 } from "@/lib/data";
 import { computeBalances, settlementSuggestions } from "@/lib/balances";
 import { formatMoney, formatDate } from "@/lib/format";
@@ -22,11 +23,12 @@ export const dynamic = "force-dynamic";
 const PERSON_ICON_BG = ["green", "blue", "purple"] as const;
 
 export default async function DashboardPage() {
-  const [profiles, expenses, splits, settlements, payments, categories] = await Promise.all([
+  const [profiles, expenses, splits, batches, batchResults, payments, categories] = await Promise.all([
     getProfiles(),
     getExpenses(),
     getExpenseSplits(),
-    getSettlements(),
+    getSettlementBatches(),
+    getSettlementBatchResults(),
     getSettlementPayments(),
     getCategories()
   ]);
@@ -35,8 +37,8 @@ export default async function DashboardPage() {
   const thisMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
   const monthExpenses = expenses.filter((e) => e.expense_date.startsWith(thisMonth));
   const monthTotal = monthExpenses.reduce((a, b) => a + Number(b.total_amount), 0);
-  const openSettlementsCount = settlements.filter(
-    (s) => s.status === "open" || s.status === "partially_paid"
+  const openSettlementsCount = batches.filter(
+    (b) => b.status === "open" || b.status === "partially_paid"
   ).length;
 
   const balances = computeBalances(
@@ -44,7 +46,7 @@ export default async function DashboardPage() {
     expenses,
     splits,
     payments,
-    settlements.map((s) => ({ id: s.id, from_user_id: s.from_user_id, to_user_id: s.to_user_id }))
+    batchResults.map((r) => ({ id: r.id, from_user_id: r.from_user_id, to_user_id: r.to_user_id }))
   );
   const suggestions = settlementSuggestions(balances);
   const profilesById = new Map(profiles.map((p) => [p.id, p]));

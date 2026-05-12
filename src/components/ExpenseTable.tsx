@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { formatDate, formatMoney } from "@/lib/format";
-import type { Category, Expense, ExpenseSplit, Profile, Settlement } from "@/lib/types";
+import type { Category, Expense, ExpenseSplit, Profile, SettlementBatch } from "@/lib/types";
 import { Badge, colorForCategory } from "@/components/ui/Badge";
 import { ChevronLeft, ChevronRight, Paperclip } from "@/components/ui/icons";
 import { ExpenseDetailDrawer } from "@/components/ExpenseDetailDrawer";
@@ -12,7 +12,7 @@ interface Props {
   splits: ExpenseSplit[];
   profiles: Profile[];
   categories: Category[];
-  settlements: Settlement[];
+  batches: SettlementBatch[];
 }
 
 type ExpenseStatus = "unpaid" | "in_settlement" | "partially_settled" | "settled";
@@ -54,7 +54,7 @@ const STATUS_FILTERS: { key: StatusFilter; label: string; color: "gray" | "orang
   { key: "settled", label: "Settled", color: "green" }
 ];
 
-export function ExpenseTable({ expenses, splits, profiles, categories, settlements }: Props) {
+export function ExpenseTable({ expenses, splits, profiles, categories, batches }: Props) {
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [paidBy, setPaidBy] = useState("");
@@ -455,7 +455,7 @@ export function ExpenseTable({ expenses, splits, profiles, categories, settlemen
               splits={splitsByExpense.get(e.id) ?? []}
               profiles={profiles}
               categories={categories}
-              settlements={settlements}
+              batches={batches}
               onClose={() => setDetailExpenseId(null)}
             />
           );

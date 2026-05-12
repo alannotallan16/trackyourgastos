@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { formatDate, formatMoney } from "@/lib/format";
-import type { Category, Expense, ExpenseSplit, Profile, Settlement } from "@/lib/types";
+import type { Category, Expense, ExpenseSplit, Profile, SettlementBatch } from "@/lib/types";
 import { Badge, colorForCategory } from "@/components/ui/Badge";
 import { ArrowRight, Pencil, X } from "@/components/ui/icons";
 
@@ -11,7 +11,7 @@ interface Props {
   splits: ExpenseSplit[];
   profiles: Profile[];
   categories: Category[];
-  settlements: Settlement[];
+  batches: SettlementBatch[];
   onClose: () => void;
 }
 
@@ -26,11 +26,11 @@ export function ExpenseDetailDrawer({
   splits,
   profiles,
   categories,
-  settlements,
+  batches,
   onClose
 }: Props) {
   const profilesById = new Map(profiles.map((p) => [p.id, p]));
-  const settlementsById = new Map(settlements.map((s) => [s.id, s]));
+  const batchesById = new Map(batches.map((b) => [b.id, b]));
   const category = expense.category_id ? categories.find((c) => c.id === expense.category_id) : null;
   const paidBy = profilesById.get(expense.paid_by_user_id);
 
@@ -93,7 +93,7 @@ export function ExpenseDetailDrawer({
               {profiles.map((p) => {
                 const s = splits.find((x) => x.user_id === p.id);
                 if (!s) return null;
-                const settlement = s.settlement_id ? settlementsById.get(s.settlement_id) : null;
+                const batch = s.settlement_batch_id ? batchesById.get(s.settlement_batch_id) : null;
                 const badge = STATUS_BADGE[s.settlement_status];
                 return (
                   <li key={p.id} className="px-3 py-2.5">
@@ -106,13 +106,13 @@ export function ExpenseDetailDrawer({
                       </div>
                       <Badge color={badge.color as any}>{badge.label}</Badge>
                     </div>
-                    {settlement && (
+                    {batch && (
                       <Link
-                        href={`/settlements/${settlement.id}`}
+                        href={`/settlements/${batch.id}`}
                         onClick={onClose}
                         className="mt-1.5 inline-flex items-center gap-1 text-xs font-medium text-brand-green hover:underline"
                       >
-                        {settlement.settlement_number}
+                        {batch.settlement_number}
                         <ArrowRight className="h-3 w-3" />
                       </Link>
                     )}

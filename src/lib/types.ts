@@ -62,13 +62,14 @@ export interface ExpenseSplit {
   percentage: number | null;
   fixed_amount: number | null;
   calculated_amount: number;
-  settlement_status: SettlementStatus;
-  settlement_id: string | null;
+  settlement_status: SettlementShareStatus;
+  settlement_batch_id: string | null;
   settled_at: string | null;
 }
 
-export type SettlementStatus = "unpaid" | "in_settlement" | "settled";
-export type SettlementStateValue = "open" | "partially_paid" | "paid" | "cancelled";
+export type SettlementShareStatus = "unpaid" | "in_settlement" | "settled";
+export type SettlementBatchStatus = "open" | "partially_paid" | "paid" | "cancelled";
+export type SettlementBatchResultStatus = "open" | "partially_paid" | "paid";
 
 export interface ReceiptFile {
   id: string;
@@ -95,34 +96,43 @@ export interface RecurringExpense {
   notes: string | null;
 }
 
-export interface Settlement {
+export interface SettlementBatch {
   id: string;
   settlement_number: string;
-  from_user_id: string;
-  to_user_id: string;
-  currency: string;
-  total_amount: number;
-  amount_paid: number;
-  remaining_amount: number;
-  status: SettlementStateValue;
+  status: SettlementBatchStatus;
   notes: string | null;
   created_by: string;
   created_at: string;
   updated_at: string;
 }
 
-export interface SettlementItem {
+export interface SettlementBatchItem {
   id: string;
-  settlement_id: string;
+  settlement_batch_id: string;
   expense_id: string;
   expense_split_id: string;
-  amount: number;
+  user_id: string;
+  share_amount: number;
   created_at: string;
+}
+
+export interface SettlementBatchResult {
+  id: string;
+  settlement_batch_id: string;
+  from_user_id: string;
+  to_user_id: string;
+  amount: number;
+  amount_paid: number;
+  remaining_amount: number;
+  currency: string;
+  status: SettlementBatchResultStatus;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface SettlementPayment {
   id: string;
-  settlement_id: string;
+  settlement_batch_result_id: string;
   payment_date: string;
   amount: number;
   currency: string;

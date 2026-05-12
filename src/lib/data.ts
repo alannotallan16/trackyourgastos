@@ -6,8 +6,9 @@ import type {
   MerchantRule,
   Profile,
   RecurringExpense,
-  Settlement,
-  SettlementItem,
+  SettlementBatch,
+  SettlementBatchItem,
+  SettlementBatchResult,
   SettlementPayment,
   SplitPreset
 } from "./types";
@@ -52,43 +53,61 @@ export async function getExpenseSplits(): Promise<ExpenseSplit[]> {
   return (data as ExpenseSplit[]) ?? [];
 }
 
-export async function getSettlements(): Promise<Settlement[]> {
+export async function getSettlementBatches(): Promise<SettlementBatch[]> {
   const supabase = createClient();
-  const { data } = await supabase.from("settlements").select("*").order("created_at", { ascending: false });
-  return (data as Settlement[]) ?? [];
+  const { data } = await supabase
+    .from("settlement_batches")
+    .select("*")
+    .order("created_at", { ascending: false });
+  return (data as SettlementBatch[]) ?? [];
 }
 
-export async function getSettlementItems(): Promise<SettlementItem[]> {
+export async function getSettlementBatchResults(): Promise<SettlementBatchResult[]> {
   const supabase = createClient();
-  const { data } = await supabase.from("settlement_items").select("*");
-  return (data as SettlementItem[]) ?? [];
+  const { data } = await supabase.from("settlement_batch_results").select("*");
+  return (data as SettlementBatchResult[]) ?? [];
 }
 
 export async function getSettlementPayments(): Promise<SettlementPayment[]> {
   const supabase = createClient();
-  const { data } = await supabase.from("settlement_payments").select("*").order("payment_date", { ascending: false });
+  const { data } = await supabase
+    .from("settlement_payments")
+    .select("*")
+    .order("payment_date", { ascending: false });
   return (data as SettlementPayment[]) ?? [];
 }
 
-export async function getSettlementDetail(id: string): Promise<{
-  settlement: Settlement | null;
-  items: SettlementItem[];
+export async function getBatchDetail(id: string): Promise<{
+  batch: SettlementBatch | null;
+  items: SettlementBatchItem[];
+  results: SettlementBatchResult[];
   payments: SettlementPayment[];
 }> {
   const supabase = createClient();
-  const [s, i, p] = await Promise.all([
-    supabase.from("settlements").select("*").eq("id", id).maybeSingle(),
-    supabase.from("settlement_items").select("*").eq("settlement_id", id),
+  const [b, i, r] = await Promise.all([
+    supabase.from("settlement_batches").select("*").eq("id", id).maybeSingle(),
+    supabase.from("settlement_batch_items").select("*").eq("settlement_batch_id", id),
     supabase
+      .from("settlement_batch_results")
+      .select("*")
+      .eq("settlement_batch_id", id)
+      .order("amount", { ascending: false })
+  ]);
+  const resultIds = (r.data ?? []).map((x: any) => x.id);
+  let payments: SettlementPayment[] = [];
+  if (resultIds.length > 0) {
+    const { data: p } = await supabase
       .from("settlement_payments")
       .select("*")
-      .eq("settlement_id", id)
-      .order("payment_date", { ascending: false })
-  ]);
+      .in("settlement_batch_result_id", resultIds)
+      .order("payment_date", { ascending: false });
+    payments = (p as SettlementPayment[]) ?? [];
+  }
   return {
-    settlement: (s.data as Settlement) ?? null,
-    items: (i.data as SettlementItem[]) ?? [],
-    payments: (p.data as SettlementPayment[]) ?? []
+    batch: (b.data as SettlementBatch) ?? null,
+    items: (i.data as SettlementBatchItem[]) ?? [],
+    results: (r.data as SettlementBatchResult[]) ?? [],
+    payments
   };
 }
 

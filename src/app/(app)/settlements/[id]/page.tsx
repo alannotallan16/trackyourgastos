@@ -1,11 +1,11 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import {
+  getBatchDetail,
   getCategories,
   getExpenseSplits,
   getExpenses,
-  getProfiles,
-  getSettlementDetail
+  getProfiles
 } from "@/lib/data";
 import { createClient } from "@/lib/supabase/server";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -13,24 +13,23 @@ import { StatCard } from "@/components/ui/StatCard";
 import { Badge, colorForCategory } from "@/components/ui/Badge";
 import { ArrowRight, ChevronLeft, Paperclip, TrendingUp, Wallet, Users } from "@/components/ui/icons";
 import { formatDate, formatMoney } from "@/lib/format";
-import { SettlementDetailActions } from "./SettlementDetailActions";
-import { SettlementStatusBadge } from "../SettlementsClient";
+import { BatchDetailActions } from "./BatchDetailActions";
+import { BatchStatusBadge } from "../SettlementsClient";
 
 export const dynamic = "force-dynamic";
 
 const RECEIPTS_BUCKET = process.env.NEXT_PUBLIC_SUPABASE_RECEIPTS_BUCKET || "receipts";
 
-export default async function SettlementDetailPage({ params }: { params: { id: string } }) {
-  const [{ settlement, items, payments }, profiles, expenses, splits, categories] = await Promise.all([
-    getSettlementDetail(params.id),
+export default async function BatchDetailPage({ params }: { params: { id: string } }) {
+  const [{ batch, items, results, payments }, profiles, expenses, splits, categories] = await Promise.all([
+    getBatchDetail(params.id),
     getProfiles(),
     getExpenses(),
     getExpenseSplits(),
     getCategories()
   ]);
-  if (!settlement) notFound();
+  if (!batch) notFound();
 
-  // Sign attachment URLs server-side for any payments that have proof-of-payment files.
   const supabase = createClient();
   const attachmentUrls = new Map<string, string>();
   await Promise.all(
@@ -49,32 +48,38 @@ export default async function SettlementDetailPage({ params }: { params: { id: s
   const splitsById = new Map(splits.map((s) => [s.id, s]));
   const categoriesById = new Map(categories.map((c) => [c.id, c]));
 
-  const fromName = profilesById.get(settlement.from_user_id)?.display_name ?? "—";
-  const toName = profilesById.get(settlement.to_user_id)?.display_name ?? "—";
+  // Group payment rows by result for easier rendering.
+  const paymentsByResult = new Map<string, typeof payments>();
+  for (const p of payments) {
+    if (!paymentsByResult.has(p.settlement_batch_result_id)) {
+      paymentsByResult.set(p.settlement_batch_result_id, []);
+    }
+    paymentsByResult.get(p.settlement_batch_result_id)!.push(p);
+  }
 
-  // Settlements with no attached items are "household-net" settlements —
-  // they represent the optimized cross-household payment without specific
-  // expense-share attribution.
-  const isNetSettlement = items.length === 0;
-  // Detect bilateral: any item whose owner ≠ settlement.from_user_id means
-  // this settlement has offsetting items (going the other direction).
-  const isBilateral = items.some((item) => {
-    const split = splitsById.get(item.expense_split_id);
-    return split != null && split.user_id !== settlement.from_user_id;
+  const totalAmount = results.reduce((s, r) => s + Number(r.amount), 0);
+  const totalPaid = results.reduce((s, r) => s + Number(r.amount_paid), 0);
+  const totalRemaining = Math.max(0, totalAmount - totalPaid);
+
+  const canCancel = batch.status === "open" || batch.status === "partially_paid";
+  // Cancel is blocked at the server level if any payment exists, but reflect
+  // it client-side too so the button stays disabled when it would fail.
+  const hasAnyPayment = totalPaid > 0.005;
+
+  // Group items by expense for the "Included expenses" table.
+  const expenseRows = Array.from(new Set(items.map((i) => i.expense_id)));
+  expenseRows.sort((a, b) => {
+    const ea = expensesById.get(a);
+    const eb = expensesById.get(b);
+    if (!ea || !eb) return 0;
+    return eb.expense_date.localeCompare(ea.expense_date);
   });
-  const fullyOffset = Number(settlement.total_amount) <= 0.005;
-  const canRecordPayment = settlement.status === "open" || settlement.status === "partially_paid";
-  const canCancel = settlement.status !== "paid" && settlement.status !== "cancelled";
 
   return (
-    <div className="p-4 md:p-6 space-y-4 max-w-4xl mx-auto">
+    <div className="p-4 md:p-6 space-y-4 max-w-5xl mx-auto">
       <PageHeader
-        title={`Settlement ${settlement.settlement_number}`}
-        subtitle={
-          fullyOffset
-            ? `${fromName} ↔ ${toName} · fully offset · created ${formatDate(settlement.created_at.slice(0, 10))}`
-            : `${fromName} → ${toName} · created ${formatDate(settlement.created_at.slice(0, 10))}`
-        }
+        title={`Settlement ${batch.settlement_number}`}
+        subtitle={`${expenseRows.length} expense${expenseRows.length === 1 ? "" : "s"} · ${results.length} payment${results.length === 1 ? "" : "s"} · created ${formatDate(batch.created_at.slice(0, 10))}`}
         actions={
           <Link href="/settlements" className="btn-ghost text-sm">
             <ChevronLeft className="h-4 w-4" />
@@ -84,59 +89,132 @@ export default async function SettlementDetailPage({ params }: { params: { id: s
       />
 
       <div className="flex items-center gap-3 flex-wrap">
-        <SettlementStatusBadge status={settlement.status} />
-        {isNetSettlement ? <Badge color="green">Household net</Badge> : isBilateral && <Badge color="blue">Bilateral netting</Badge>}
-        {settlement.notes && <span className="text-sm text-slate-500">{settlement.notes}</span>}
+        <BatchStatusBadge status={batch.status} />
+        {batch.notes && <span className="text-sm text-slate-500">{batch.notes}</span>}
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <StatCard
-          label="Total"
-          value={formatMoney(Number(settlement.total_amount), settlement.currency)}
+          label="Total to settle"
+          value={formatMoney(totalAmount)}
           icon={TrendingUp}
           iconBg="navy"
         />
         <StatCard
-          label="Paid"
-          value={formatMoney(Number(settlement.amount_paid), settlement.currency)}
-          tone={Number(settlement.amount_paid) > 0 ? "positive" : "default"}
+          label="Paid so far"
+          value={formatMoney(totalPaid)}
+          tone={totalPaid > 0 ? "positive" : "default"}
           icon={Wallet}
           iconBg="green"
         />
         <StatCard
           label="Remaining"
-          value={formatMoney(Number(settlement.remaining_amount), settlement.currency)}
-          tone={Number(settlement.remaining_amount) > 0 ? "negative" : "default"}
+          value={formatMoney(totalRemaining)}
+          tone={totalRemaining > 0 ? "negative" : "default"}
           icon={Users}
           iconBg="blue"
         />
       </div>
 
-      <SettlementDetailActions
-        settlementId={settlement.id}
-        remaining={Number(settlement.remaining_amount)}
-        currency={settlement.currency}
-        canRecordPayment={canRecordPayment}
-        canCancel={canCancel}
-      />
+      <BatchDetailActions batchId={batch.id} canCancel={canCancel} hasAnyPayment={hasAnyPayment} />
 
+      {/* Generated payments (one per result) */}
       <div className="card overflow-hidden p-0">
         <div className="px-5 py-3 border-b border-slate-100">
-          <h2 className="text-sm font-semibold text-brand-navy">
-            {isNetSettlement ? "Reconciliation" : `Included expenses (${items.length})`}
-          </h2>
+          <h2 className="text-sm font-semibold text-brand-navy">Generated payments ({results.length})</h2>
         </div>
-        {isNetSettlement ? (
-          <div className="px-5 py-6 text-sm space-y-2">
-            <p className="text-slate-700">
-              <strong className="text-brand-navy">Household-net settlement.</strong> This is the optimized payment that reduces the overall household balance — no specific expense shares are attached.
-            </p>
-            <p className="text-slate-500 text-xs">
-              When you record payment here, balances update directly. The underlying expense shares stay tagged as their original status; switch to <strong>Detailed</strong> mode on the settlements page when you want share-level reconciliation.
-            </p>
-          </div>
-        ) : items.length === 0 ? (
-          <p className="px-5 py-6 text-sm text-slate-500 text-center">No items.</p>
+        {results.length === 0 ? (
+          <p className="px-5 py-6 text-sm text-slate-500 text-center">No payments generated.</p>
+        ) : (
+          <ul className="divide-y divide-slate-100">
+            {results.map((r) => {
+              const fromName = profilesById.get(r.from_user_id)?.display_name ?? "—";
+              const toName = profilesById.get(r.to_user_id)?.display_name ?? "—";
+              const rPayments = paymentsByResult.get(r.id) ?? [];
+              const statusBadge =
+                r.status === "paid"
+                  ? <Badge color="green">Paid</Badge>
+                  : r.status === "partially_paid"
+                    ? <Badge color="blue">Partially paid</Badge>
+                    : <Badge color="orange">Open</Badge>;
+              return (
+                <li key={r.id} className="px-5 py-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="font-medium text-brand-navy">{fromName}</span>
+                      <ArrowRight className="h-4 w-4 text-slate-400" />
+                      <span className="font-medium text-brand-navy">{toName}</span>
+                      <span className="ml-2">{statusBadge}</span>
+                    </div>
+                    <div className="flex items-baseline gap-3 text-sm">
+                      <span className="text-slate-500">Total</span>
+                      <span className="tabular-nums text-brand-navy">{formatMoney(Number(r.amount), r.currency)}</span>
+                      <span className="text-slate-500">Paid</span>
+                      <span className="tabular-nums">{formatMoney(Number(r.amount_paid), r.currency)}</span>
+                      <span className="text-slate-500">Remaining</span>
+                      <span className="tabular-nums font-semibold">{formatMoney(Number(r.remaining_amount), r.currency)}</span>
+                    </div>
+                  </div>
+
+                  {/* Payment history per result */}
+                  {rPayments.length > 0 && (
+                    <ul className="mt-3 space-y-1 text-xs">
+                      {rPayments.map((p) => {
+                        const proofUrl = attachmentUrls.get(p.id);
+                        return (
+                          <li key={p.id} className="flex flex-wrap items-center gap-3 rounded-lg bg-slate-50 px-3 py-1.5">
+                            <span className="text-slate-600">{formatDate(p.payment_date)}</span>
+                            <span className="font-medium tabular-nums">{formatMoney(Number(p.amount), p.currency)}</span>
+                            {p.payment_method && <span className="text-slate-500">{p.payment_method}</span>}
+                            {p.reference_number && <span className="text-slate-500">#{p.reference_number}</span>}
+                            {p.notes && <span className="text-slate-500">— {p.notes}</span>}
+                            {proofUrl && (
+                              <a
+                                href={proofUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="inline-flex items-center gap-1 text-brand-green hover:underline ml-auto"
+                              >
+                                <Paperclip className="h-3.5 w-3.5" />
+                                View
+                              </a>
+                            )}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+
+                  {/* Record-payment action lives on the actions row above; for
+                       per-result granularity, surface a Record button inline
+                       when this result still has remaining. */}
+                  {r.status !== "paid" && batch.status !== "cancelled" && (
+                    <div className="mt-3">
+                      <BatchDetailActions
+                        batchId={batch.id}
+                        resultId={r.id}
+                        remaining={Number(r.remaining_amount)}
+                        currency={r.currency}
+                        canCancel={false}
+                        hasAnyPayment={false}
+                        inline
+                      />
+                    </div>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
+
+      {/* Included expenses */}
+      <div className="card overflow-hidden p-0">
+        <div className="px-5 py-3 border-b border-slate-100">
+          <h2 className="text-sm font-semibold text-brand-navy">Included expenses ({expenseRows.length})</h2>
+        </div>
+        {expenseRows.length === 0 ? (
+          <p className="px-5 py-6 text-sm text-slate-500 text-center">No expenses linked.</p>
         ) : (
           <table className="min-w-full text-sm">
             <thead className="bg-slate-50">
@@ -144,104 +222,46 @@ export default async function SettlementDetailPage({ params }: { params: { id: s
                 <th className="table-cell text-left text-xs uppercase tracking-wide text-slate-600">Date</th>
                 <th className="table-cell text-left text-xs uppercase tracking-wide text-slate-600">Merchant</th>
                 <th className="table-cell text-left text-xs uppercase tracking-wide text-slate-600">Category</th>
-                <th className="table-cell text-left text-xs uppercase tracking-wide text-slate-600">Direction</th>
+                <th className="table-cell text-left text-xs uppercase tracking-wide text-slate-600">Paid by</th>
                 <th className="table-cell text-right text-xs uppercase tracking-wide text-slate-600">Total</th>
-                <th className="table-cell text-right text-xs uppercase tracking-wide text-slate-600">Share</th>
+                <th className="table-cell text-left text-xs uppercase tracking-wide text-slate-600">Shares</th>
               </tr>
             </thead>
             <tbody>
-              {items.map((item) => {
-                const exp = expensesById.get(item.expense_id);
-                const split = splitsById.get(item.expense_split_id);
-                const cat = exp?.category_id ? categoriesById.get(exp.category_id) : null;
-                const owerName = split ? profilesById.get(split.user_id)?.display_name ?? "—" : "—";
-                const payerName = exp ? profilesById.get(exp.paid_by_user_id)?.display_name ?? "—" : "—";
-                // An item is "offsetting" relative to the settlement's net direction
-                // when its debtor isn't the settlement's from_user_id.
-                const isOffset = split != null && split.user_id !== settlement.from_user_id;
+              {expenseRows.map((eid) => {
+                const e = expensesById.get(eid);
+                if (!e) return null;
+                const cat = e.category_id ? categoriesById.get(e.category_id) : null;
+                const eItems = items.filter((i) => i.expense_id === eid);
                 return (
-                  <tr key={item.id} className={isOffset ? "bg-amber-50/40 hover:bg-amber-50" : "hover:bg-slate-50"}>
-                    <td className="table-cell whitespace-nowrap text-slate-600">
-                      {exp ? formatDate(exp.expense_date) : "—"}
-                    </td>
+                  <tr key={eid} className="hover:bg-slate-50">
+                    <td className="table-cell whitespace-nowrap text-slate-600">{formatDate(e.expense_date)}</td>
                     <td className="table-cell font-medium">
-                      {exp ? (
-                        <Link className="hover:text-brand-green" href={`/expenses/${exp.id}`}>
-                          {exp.merchant}
-                        </Link>
-                      ) : (
-                        "—"
-                      )}
+                      <Link className="hover:text-brand-green" href={`/expenses/${e.id}`}>
+                        {e.merchant}
+                      </Link>
                     </td>
                     <td className="table-cell">
                       {cat ? <Badge color={colorForCategory(cat.name)}>{cat.name}</Badge> : <span className="text-slate-400">—</span>}
                     </td>
+                    <td className="table-cell text-slate-600">
+                      {profilesById.get(e.paid_by_user_id)?.display_name ?? "—"}
+                    </td>
+                    <td className="table-cell text-right tabular-nums font-medium">
+                      {formatMoney(Number(e.total_amount), e.currency)}
+                    </td>
                     <td className="table-cell text-xs text-slate-600">
-                      <span className="inline-flex items-center gap-1">
-                        <span className={isOffset ? "text-amber-700 font-medium" : "font-medium"}>{owerName}</span>
-                        <ArrowRight className="h-3 w-3 text-slate-400" />
-                        <span className={isOffset ? "text-amber-700 font-medium" : "font-medium"}>{payerName}</span>
-                        {isOffset && <Badge color="orange" className="ml-1">offset</Badge>}
-                      </span>
-                    </td>
-                    <td className="table-cell text-right tabular-nums text-slate-600">
-                      {exp ? formatMoney(Number(exp.total_amount), exp.currency) : "—"}
-                    </td>
-                    <td className="table-cell text-right tabular-nums font-medium">
-                      {formatMoney(Number(item.amount), settlement.currency)}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        )}
-      </div>
-
-      <div className="card overflow-hidden p-0">
-        <div className="px-5 py-3 border-b border-slate-100">
-          <h2 className="text-sm font-semibold text-brand-navy">Payment history ({payments.length})</h2>
-        </div>
-        {payments.length === 0 ? (
-          <p className="px-5 py-6 text-sm text-slate-500 text-center">No payments recorded yet.</p>
-        ) : (
-          <table className="min-w-full text-sm">
-            <thead className="bg-slate-50">
-              <tr>
-                <th className="table-cell text-left text-xs uppercase tracking-wide text-slate-600">Date</th>
-                <th className="table-cell text-right text-xs uppercase tracking-wide text-slate-600">Amount</th>
-                <th className="table-cell text-left text-xs uppercase tracking-wide text-slate-600">Method</th>
-                <th className="table-cell text-left text-xs uppercase tracking-wide text-slate-600">Reference</th>
-                <th className="table-cell text-left text-xs uppercase tracking-wide text-slate-600">Notes</th>
-                <th className="table-cell text-left text-xs uppercase tracking-wide text-slate-600">Proof</th>
-              </tr>
-            </thead>
-            <tbody>
-              {payments.map((p) => {
-                const proofUrl = attachmentUrls.get(p.id);
-                return (
-                  <tr key={p.id} className="hover:bg-slate-50">
-                    <td className="table-cell whitespace-nowrap text-slate-600">{formatDate(p.payment_date)}</td>
-                    <td className="table-cell text-right tabular-nums font-medium">
-                      {formatMoney(Number(p.amount), p.currency)}
-                    </td>
-                    <td className="table-cell">{p.payment_method ?? "—"}</td>
-                    <td className="table-cell text-slate-600">{p.reference_number ?? "—"}</td>
-                    <td className="table-cell text-slate-600">{p.notes ?? ""}</td>
-                    <td className="table-cell">
-                      {proofUrl ? (
-                        <a
-                          href={proofUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="inline-flex items-center gap-1 text-brand-green hover:underline text-xs font-medium"
-                        >
-                          <Paperclip className="h-3.5 w-3.5" />
-                          View
-                        </a>
-                      ) : (
-                        <span className="text-slate-300">—</span>
-                      )}
+                      <div className="flex flex-wrap gap-x-2 gap-y-0.5">
+                        {eItems.map((it) => {
+                          const u = profilesById.get(it.user_id);
+                          return (
+                            <span key={it.id}>
+                              <span className="text-slate-400">{u?.short_name ?? "?"}</span>{" "}
+                              <span className="tabular-nums">{formatMoney(Number(it.share_amount), e.currency)}</span>
+                            </span>
+                          );
+                        })}
+                      </div>
                     </td>
                   </tr>
                 );

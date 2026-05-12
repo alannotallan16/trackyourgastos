@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { formatDate, formatMoney } from "@/lib/format";
 import type { Category, Expense, ExpenseSplit, Profile } from "@/lib/types";
+import { Badge, colorForCategory } from "@/components/ui/Badge";
+import { ChevronLeft, ChevronRight, Paperclip } from "@/components/ui/icons";
 
 interface Props {
   expenses: Expense[];
@@ -119,12 +121,12 @@ export function ExpenseTable({ expenses, splits, profiles, categories }: Props) 
       <button
         type="button"
         onClick={() => toggleSort(key)}
-        className={`inline-flex items-center gap-0.5 font-semibold hover:text-brand-dark ${
+        className={`inline-flex items-center gap-1 font-semibold uppercase text-xs tracking-wide text-slate-600 hover:text-brand-green ${
           align === "right" ? "justify-end w-full" : ""
         }`}
       >
         <span>{label}</span>
-        <span className="text-slate-500">{arrow(key)}</span>
+        <span className="text-slate-400 text-[10px]">{arrow(key)}</span>
       </button>
     </th>
   );
@@ -133,7 +135,7 @@ export function ExpenseTable({ expenses, splits, profiles, categories }: Props) 
   const firstVisibleIdx = totalRows === 0 ? 0 : startIdx + 1;
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
       <div className="card grid grid-cols-2 md:grid-cols-6 gap-2">
         <input type="date" className="input" value={from} onChange={(e) => setFrom(e.target.value)} placeholder="From" />
         <input type="date" className="input" value={to} onChange={(e) => setTo(e.target.value)} placeholder="To" />
@@ -164,29 +166,31 @@ export function ExpenseTable({ expenses, splits, profiles, categories }: Props) 
         </select>
       </div>
 
-      <div className="card overflow-x-auto p-0">
-        <table className="min-w-full text-sm">
-          <thead className="bg-slate-100">
+      <div className="card overflow-hidden p-0">
+        <table className="hidden md:table min-w-full text-sm">
+          <thead className="bg-slate-50">
             <tr>
               {sortableHeader("date", "Date")}
               {sortableHeader("paid_by", "Paid by")}
               {sortableHeader("merchant", "Merchant")}
               {sortableHeader("category", "Category")}
               {sortableHeader("total", "Total", "right")}
-              <th className="table-cell text-left">Cur</th>
+              <th className="table-cell text-left text-xs uppercase tracking-wide text-slate-600">Cur</th>
               {profiles.map((p) => (
                 <th key={p.id} className="table-cell text-right">
                   <button
                     type="button"
                     onClick={() => toggleSort(`share:${p.id}` as SortKey)}
-                    className="inline-flex items-center justify-end w-full gap-0.5 font-semibold hover:text-brand-dark"
+                    className="inline-flex items-center justify-end w-full gap-1 font-semibold uppercase text-xs tracking-wide text-slate-600 hover:text-brand-green"
                   >
                     <span>{p.display_name}</span>
-                    <span className="text-slate-500">{arrow(`share:${p.id}` as SortKey)}</span>
+                    <span className="text-slate-400 text-[10px]">{arrow(`share:${p.id}` as SortKey)}</span>
                   </button>
                 </th>
               ))}
-              <th className="table-cell text-center">📎</th>
+              <th className="table-cell text-center">
+                <Paperclip className="h-4 w-4 inline text-slate-400" />
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -201,26 +205,30 @@ export function ExpenseTable({ expenses, splits, profiles, categories }: Props) 
               const sp = splitsByExpense.get(e.id) ?? [];
               const cat = e.category_id ? categoriesById.get(e.category_id) : null;
               return (
-                <tr key={e.id} className="hover:bg-slate-50">
+                <tr key={e.id} className="hover:bg-slate-50 transition-colors">
                   <td className="table-cell whitespace-nowrap">
-                    <Link href={`/expenses/${e.id}`} className="text-brand-dark underline">
+                    <Link href={`/expenses/${e.id}`} className="text-brand-navy font-medium hover:text-brand-green">
                       {formatDate(e.expense_date)}
                     </Link>
                   </td>
-                  <td className="table-cell">{profilesById.get(e.paid_by_user_id)?.display_name ?? "—"}</td>
-                  <td className="table-cell">{e.merchant}</td>
-                  <td className="table-cell">{cat?.name ?? "—"}</td>
-                  <td className="table-cell text-right tabular-nums">{formatMoney(Number(e.total_amount), e.currency)}</td>
-                  <td className="table-cell">{e.currency}</td>
+                  <td className="table-cell text-slate-700">{profilesById.get(e.paid_by_user_id)?.display_name ?? "—"}</td>
+                  <td className="table-cell font-medium">{e.merchant}</td>
+                  <td className="table-cell">
+                    {cat ? <Badge color={colorForCategory(cat.name)}>{cat.name}</Badge> : <span className="text-slate-400">—</span>}
+                  </td>
+                  <td className="table-cell text-right tabular-nums font-medium">{formatMoney(Number(e.total_amount), e.currency)}</td>
+                  <td className="table-cell text-slate-500 text-xs">{e.currency}</td>
                   {profiles.map((p) => {
                     const s = sp.find((x) => x.user_id === p.id);
                     return (
-                      <td key={p.id} className="table-cell text-right tabular-nums">
-                        {s ? formatMoney(Number(s.calculated_amount), e.currency) : "—"}
+                      <td key={p.id} className="table-cell text-right tabular-nums text-slate-700">
+                        {s ? formatMoney(Number(s.calculated_amount), e.currency) : <span className="text-slate-300">—</span>}
                       </td>
                     );
                   })}
-                  <td className="table-cell text-center">{e.receipt_file_id ? "📎" : ""}</td>
+                  <td className="table-cell text-center">
+                    {e.receipt_file_id ? <Paperclip className="h-4 w-4 inline text-brand-blue" /> : ""}
+                  </td>
                 </tr>
               );
             })}
@@ -230,21 +238,76 @@ export function ExpenseTable({ expenses, splits, profiles, categories }: Props) 
               <td className="table-cell" colSpan={4}>
                 {filtered.length} expense(s)
               </td>
-              <td className="table-cell text-right">{formatMoney(totalAmount)}</td>
+              <td className="table-cell text-right tabular-nums">{formatMoney(totalAmount)}</td>
               <td className="table-cell" colSpan={1 + profiles.length + 1}></td>
             </tr>
           </tfoot>
         </table>
 
-        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 px-3 py-2 text-sm text-slate-600">
+        {/* Mobile card list */}
+        <div className="md:hidden divide-y divide-slate-100">
+          {visible.length === 0 && (
+            <p className="text-slate-500 text-center py-8 text-sm">No expenses match these filters.</p>
+          )}
+          {visible.map((e) => {
+            const sp = splitsByExpense.get(e.id) ?? [];
+            const cat = e.category_id ? categoriesById.get(e.category_id) : null;
+            return (
+              <Link
+                key={e.id}
+                href={`/expenses/${e.id}`}
+                className="block px-4 py-3 hover:bg-slate-50"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-brand-navy truncate">{e.merchant}</span>
+                      {e.receipt_file_id && <Paperclip className="h-3.5 w-3.5 text-brand-blue shrink-0" />}
+                    </div>
+                    <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500">
+                      <span>{formatDate(e.expense_date)}</span>
+                      <span>·</span>
+                      <span>Paid by {profilesById.get(e.paid_by_user_id)?.display_name ?? "—"}</span>
+                      {cat && <Badge color={colorForCategory(cat.name)} className="ml-1">{cat.name}</Badge>}
+                    </div>
+                    <div className="mt-2 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-slate-500">
+                      {profiles.map((p) => {
+                        const s = sp.find((x) => x.user_id === p.id);
+                        if (!s) return null;
+                        return (
+                          <span key={p.id} className="tabular-nums">
+                            <span className="text-slate-400">{p.display_name}</span>{" "}
+                            <span className="text-slate-700">{formatMoney(Number(s.calculated_amount), e.currency)}</span>
+                          </span>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-base font-semibold tabular-nums text-brand-navy">
+                      {formatMoney(Number(e.total_amount), e.currency)}
+                    </div>
+                    <div className="text-[10px] uppercase tracking-wide text-slate-400">{e.currency}</div>
+                  </div>
+                </div>
+              </Link>
+            );
+          })}
+          <div className="px-4 py-3 bg-slate-50 flex items-center justify-between text-sm">
+            <span className="text-slate-500">{filtered.length} expense(s)</span>
+            <span className="font-medium tabular-nums">{formatMoney(totalAmount)}</span>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 px-4 py-3 text-sm text-slate-600 bg-white">
           <div>
             Showing {firstVisibleIdx}–{lastVisibleIdx} of {totalRows}
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <label className="flex items-center gap-1">
-              Rows per page
+            <label className="flex items-center gap-1.5">
+              <span className="text-xs text-slate-500">Rows</span>
               <select
-                className="input !w-auto !py-1"
+                className="input !w-auto !py-1.5 !px-2 text-sm"
                 value={String(pageSize)}
                 onChange={(e) => {
                   const v = e.target.value;
@@ -260,22 +323,24 @@ export function ExpenseTable({ expenses, splits, profiles, categories }: Props) 
             </label>
             <button
               type="button"
-              className="btn-secondary !py-1 !px-3 text-sm"
+              className="btn-secondary !py-1.5 !px-2.5 text-sm"
               onClick={() => setPage((p) => Math.max(1, p - 1))}
               disabled={safePage <= 1}
+              aria-label="Previous page"
             >
-              Prev
+              <ChevronLeft className="h-4 w-4" />
             </button>
-            <span>
+            <span className="text-xs text-slate-500">
               Page {safePage} of {pageCount}
             </span>
             <button
               type="button"
-              className="btn-secondary !py-1 !px-3 text-sm"
+              className="btn-secondary !py-1.5 !px-2.5 text-sm"
               onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
               disabled={safePage >= pageCount}
+              aria-label="Next page"
             >
-              Next
+              <ChevronRight className="h-4 w-4" />
             </button>
           </div>
         </div>

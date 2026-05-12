@@ -2,6 +2,7 @@
 
 import { useTransition } from "react";
 import { deleteExpense } from "@/app/(app)/expenses/actions";
+import { Trash2 } from "@/components/ui/icons";
 
 export function DeleteExpenseButton({ id }: { id: string }) {
   const [pending, start] = useTransition();
@@ -14,6 +15,7 @@ export function DeleteExpenseButton({ id }: { id: string }) {
         start(() => deleteExpense(id));
       }}
     >
+      <Trash2 className="h-4 w-4" />
       {pending ? "Deleting…" : "Delete"}
     </button>
   );

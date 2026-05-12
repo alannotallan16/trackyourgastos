@@ -271,14 +271,16 @@ export function ExpenseForm({
       <div className="card">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2 mb-3">
           <p className="font-medium">Split between</p>
-          <div className="flex gap-2 text-xs">
+          <div className="inline-flex rounded-full bg-slate-100 p-1 text-xs">
             {(["equal", "percentage", "fixed"] as SplitType[]).map((t) => (
               <button
                 type="button"
                 key={t}
                 onClick={() => setSplitType(t)}
-                className={`px-3 py-1 rounded-full border ${
-                  splitType === t ? "bg-brand text-white border-brand" : "bg-white border-slate-300 text-slate-700"
+                className={`px-3 py-1 rounded-full font-medium capitalize transition ${
+                  splitType === t
+                    ? "bg-brand-gradient text-white shadow-sm"
+                    : "text-slate-600 hover:text-brand-navy"
                 }`}
               >
                 {t}
@@ -361,12 +363,13 @@ export function ExpenseForm({
 
       {receiptPreviewUrl && (
         <div className="card">
-          <p className="text-xs uppercase text-slate-500 mb-2">Attached receipt</p>
-          <img src={receiptPreviewUrl} alt="receipt" className="max-h-64 rounded border border-slate-200" />
+          <p className="text-xs uppercase font-semibold tracking-wide text-slate-500 mb-2">Attached receipt</p>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={receiptPreviewUrl} alt="receipt" className="max-h-64 rounded-xl border border-slate-200" />
         </div>
       )}
 
-      {submitErr && <p className="text-sm text-red-600">{submitErr}</p>}
+      {submitErr && <p className="text-sm text-brand-danger">{submitErr}</p>}
 
       <div className="flex gap-3">
         <button className="btn-primary" disabled={pending}>

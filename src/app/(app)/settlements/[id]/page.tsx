@@ -1,11 +1,17 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { getCategories, getExpenses, getProfiles, getSettlementDetail } from "@/lib/data";
+import {
+  getCategories,
+  getExpenseSplits,
+  getExpenses,
+  getProfiles,
+  getSettlementDetail
+} from "@/lib/data";
 import { createClient } from "@/lib/supabase/server";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { StatCard } from "@/components/ui/StatCard";
 import { Badge, colorForCategory } from "@/components/ui/Badge";
-import { ChevronLeft, Paperclip, TrendingUp, Wallet, Users } from "@/components/ui/icons";
+import { ArrowRight, ChevronLeft, Paperclip, TrendingUp, Wallet, Users } from "@/components/ui/icons";
 import { formatDate, formatMoney } from "@/lib/format";
 import { SettlementDetailActions } from "./SettlementDetailActions";
 import { SettlementStatusBadge } from "../SettlementsClient";
@@ -15,10 +21,11 @@ export const dynamic = "force-dynamic";
 const RECEIPTS_BUCKET = process.env.NEXT_PUBLIC_SUPABASE_RECEIPTS_BUCKET || "receipts";
 
 export default async function SettlementDetailPage({ params }: { params: { id: string } }) {
-  const [{ settlement, items, payments }, profiles, expenses, categories] = await Promise.all([
+  const [{ settlement, items, payments }, profiles, expenses, splits, categories] = await Promise.all([
     getSettlementDetail(params.id),
     getProfiles(),
     getExpenses(),
+    getExpenseSplits(),
     getCategories()
   ]);
   if (!settlement) notFound();
@@ -39,10 +46,19 @@ export default async function SettlementDetailPage({ params }: { params: { id: s
 
   const profilesById = new Map(profiles.map((p) => [p.id, p]));
   const expensesById = new Map(expenses.map((e) => [e.id, e]));
+  const splitsById = new Map(splits.map((s) => [s.id, s]));
   const categoriesById = new Map(categories.map((c) => [c.id, c]));
 
   const fromName = profilesById.get(settlement.from_user_id)?.display_name ?? "—";
   const toName = profilesById.get(settlement.to_user_id)?.display_name ?? "—";
+
+  // Detect bilateral: any item whose owner ≠ settlement.from_user_id means
+  // this settlement has offsetting items (going the other direction).
+  const isBilateral = items.some((item) => {
+    const split = splitsById.get(item.expense_split_id);
+    return split != null && split.user_id !== settlement.from_user_id;
+  });
+  const fullyOffset = Number(settlement.total_amount) <= 0.005;
   const canRecordPayment = settlement.status === "open" || settlement.status === "partially_paid";
   const canCancel = settlement.status !== "paid" && settlement.status !== "cancelled";
 
@@ -50,7 +66,11 @@ export default async function SettlementDetailPage({ params }: { params: { id: s
     <div className="p-4 md:p-6 space-y-4 max-w-4xl mx-auto">
       <PageHeader
         title={`Settlement ${settlement.settlement_number}`}
-        subtitle={`${fromName} → ${toName} · created ${formatDate(settlement.created_at.slice(0, 10))}`}
+        subtitle={
+          fullyOffset
+            ? `${fromName} ↔ ${toName} · fully offset · created ${formatDate(settlement.created_at.slice(0, 10))}`
+            : `${fromName} → ${toName} · created ${formatDate(settlement.created_at.slice(0, 10))}`
+        }
         actions={
           <Link href="/settlements" className="btn-ghost text-sm">
             <ChevronLeft className="h-4 w-4" />
@@ -59,8 +79,9 @@ export default async function SettlementDetailPage({ params }: { params: { id: s
         }
       />
 
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 flex-wrap">
         <SettlementStatusBadge status={settlement.status} />
+        {isBilateral && <Badge color="blue">Bilateral netting</Badge>}
         {settlement.notes && <span className="text-sm text-slate-500">{settlement.notes}</span>}
       </div>
 
@@ -108,6 +129,7 @@ export default async function SettlementDetailPage({ params }: { params: { id: s
                 <th className="table-cell text-left text-xs uppercase tracking-wide text-slate-600">Date</th>
                 <th className="table-cell text-left text-xs uppercase tracking-wide text-slate-600">Merchant</th>
                 <th className="table-cell text-left text-xs uppercase tracking-wide text-slate-600">Category</th>
+                <th className="table-cell text-left text-xs uppercase tracking-wide text-slate-600">Direction</th>
                 <th className="table-cell text-right text-xs uppercase tracking-wide text-slate-600">Total</th>
                 <th className="table-cell text-right text-xs uppercase tracking-wide text-slate-600">Share</th>
               </tr>
@@ -115,9 +137,15 @@ export default async function SettlementDetailPage({ params }: { params: { id: s
             <tbody>
               {items.map((item) => {
                 const exp = expensesById.get(item.expense_id);
+                const split = splitsById.get(item.expense_split_id);
                 const cat = exp?.category_id ? categoriesById.get(exp.category_id) : null;
+                const owerName = split ? profilesById.get(split.user_id)?.display_name ?? "—" : "—";
+                const payerName = exp ? profilesById.get(exp.paid_by_user_id)?.display_name ?? "—" : "—";
+                // An item is "offsetting" relative to the settlement's net direction
+                // when its debtor isn't the settlement's from_user_id.
+                const isOffset = split != null && split.user_id !== settlement.from_user_id;
                 return (
-                  <tr key={item.id} className="hover:bg-slate-50">
+                  <tr key={item.id} className={isOffset ? "bg-amber-50/40 hover:bg-amber-50" : "hover:bg-slate-50"}>
                     <td className="table-cell whitespace-nowrap text-slate-600">
                       {exp ? formatDate(exp.expense_date) : "—"}
                     </td>
@@ -132,6 +160,14 @@ export default async function SettlementDetailPage({ params }: { params: { id: s
                     </td>
                     <td className="table-cell">
                       {cat ? <Badge color={colorForCategory(cat.name)}>{cat.name}</Badge> : <span className="text-slate-400">—</span>}
+                    </td>
+                    <td className="table-cell text-xs text-slate-600">
+                      <span className="inline-flex items-center gap-1">
+                        <span className={isOffset ? "text-amber-700 font-medium" : "font-medium"}>{owerName}</span>
+                        <ArrowRight className="h-3 w-3 text-slate-400" />
+                        <span className={isOffset ? "text-amber-700 font-medium" : "font-medium"}>{payerName}</span>
+                        {isOffset && <Badge color="orange" className="ml-1">offset</Badge>}
+                      </span>
                     </td>
                     <td className="table-cell text-right tabular-nums text-slate-600">
                       {exp ? formatMoney(Number(exp.total_amount), exp.currency) : "—"}

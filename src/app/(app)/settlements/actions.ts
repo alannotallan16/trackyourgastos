@@ -7,11 +7,23 @@ import { createClient } from "@/lib/supabase/server";
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
 // ---------------------------------------------------------------------------
-// Create settlement
+// Create settlement (bilateral netting)
+//
+// Caller passes two participants (A, B) and the splits they want to reconcile.
+// Each split must point *one way* between them — i.e. either:
+//   split.user_id = A AND expense.paid_by = B  (A owes B)
+// or
+//   split.user_id = B AND expense.paid_by = A  (B owes A)
+//
+// We compute grossA→B and grossB→A, derive net + direction, and store the
+// settlement with from = net debtor, to = net creditor, total_amount = |net|.
+// If the net is zero (perfect offset) the settlement is created already in
+// the "paid" state and every included share is marked settled — no actual
+// money needs to change hands.
 // ---------------------------------------------------------------------------
 const CreateSchema = z.object({
-  from_user_id: z.string().uuid(),
-  to_user_id: z.string().uuid(),
+  participant_a_id: z.string().uuid(),
+  participant_b_id: z.string().uuid(),
   currency: z.string().default("PHP"),
   split_ids: z.array(z.string().uuid()).min(1, "Pick at least one expense to include."),
   notes: z.string().nullable().optional()
@@ -21,8 +33,8 @@ export type CreateSettlementPayload = z.infer<typeof CreateSchema>;
 
 export async function createSettlement(payload: CreateSettlementPayload): Promise<{ id: string }> {
   const parsed = CreateSchema.parse(payload);
-  if (parsed.from_user_id === parsed.to_user_id) {
-    throw new Error("Payer and recipient must differ.");
+  if (parsed.participant_a_id === parsed.participant_b_id) {
+    throw new Error("The two participants must differ.");
   }
 
   const supabase = createClient();
@@ -31,8 +43,7 @@ export async function createSettlement(payload: CreateSettlementPayload): Promis
   } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated.");
 
-  // Fetch the splits + their expenses to validate direction + status, and
-  // sum the total.
+  // Fetch the splits + their expenses to validate direction + status.
   const { data: splits, error: splitsErr } = await supabase
     .from("expense_splits")
     .select("id, expense_id, user_id, calculated_amount, settlement_status, settlement_id")
@@ -51,34 +62,46 @@ export async function createSettlement(payload: CreateSettlementPayload): Promis
   if (expErr) throw expErr;
   const expById = new Map((expenses ?? []).map((e: any) => [e.id, e]));
 
-  let total = 0;
+  const A = parsed.participant_a_id;
+  const B = parsed.participant_b_id;
+  let grossAtoB = 0;
+  let grossBtoA = 0;
   for (const s of splits as any[]) {
     if (s.settlement_status !== "unpaid" || s.settlement_id) {
       throw new Error("One of the selected shares is already in a settlement.");
     }
-    if (s.user_id !== parsed.from_user_id) {
-      throw new Error("Selected share doesn't belong to the From person.");
-    }
     const exp = expById.get(s.expense_id);
-    if (!exp || exp.paid_by_user_id !== parsed.to_user_id) {
-      throw new Error("Selected share isn't owed to the To person.");
+    if (!exp) throw new Error("Selected share references a missing expense.");
+    const owerId: string = s.user_id;
+    const payerId: string = exp.paid_by_user_id;
+    if (owerId === A && payerId === B) {
+      grossAtoB += Number(s.calculated_amount);
+    } else if (owerId === B && payerId === A) {
+      grossBtoA += Number(s.calculated_amount);
+    } else {
+      throw new Error("Selected share isn't between the two participants.");
     }
-    total += Number(s.calculated_amount);
   }
-  total = round2(total);
-  if (total <= 0) throw new Error("Settlement total must be positive.");
+  grossAtoB = round2(grossAtoB);
+  grossBtoA = round2(grossBtoA);
+
+  const netSigned = round2(grossAtoB - grossBtoA); // > 0 means A owes B net
+  const total = Math.abs(netSigned);
+  const fromUser = netSigned >= 0 ? A : B;
+  const toUser = netSigned >= 0 ? B : A;
+  const fullyOffset = total <= 0.005;
 
   // Insert settlement
   const { data: inserted, error: insErr } = await supabase
     .from("settlements")
     .insert({
-      from_user_id: parsed.from_user_id,
-      to_user_id: parsed.to_user_id,
+      from_user_id: fromUser,
+      to_user_id: toUser,
       currency: parsed.currency,
       total_amount: total,
-      amount_paid: 0,
-      remaining_amount: total,
-      status: "open",
+      amount_paid: fullyOffset ? total : 0,
+      remaining_amount: fullyOffset ? 0 : total,
+      status: fullyOffset ? "paid" : "open",
       notes: parsed.notes ?? null,
       created_by: user.id
     })
@@ -86,7 +109,7 @@ export async function createSettlement(payload: CreateSettlementPayload): Promis
     .single();
   if (insErr || !inserted) throw insErr ?? new Error("Failed to create settlement.");
 
-  // Insert items
+  // Insert items (one row per included split, both directions kept)
   const items = (splits as any[]).map((s: any) => ({
     settlement_id: inserted.id,
     expense_id: s.expense_id,
@@ -96,10 +119,14 @@ export async function createSettlement(payload: CreateSettlementPayload): Promis
   const { error: itemsErr } = await supabase.from("settlement_items").insert(items);
   if (itemsErr) throw itemsErr;
 
-  // Mark splits in_settlement
+  // Mark splits in_settlement (or settled, if the netting fully offset them)
   const { error: updErr } = await supabase
     .from("expense_splits")
-    .update({ settlement_status: "in_settlement", settlement_id: inserted.id, settled_at: null })
+    .update({
+      settlement_status: fullyOffset ? "settled" : "in_settlement",
+      settlement_id: inserted.id,
+      settled_at: fullyOffset ? new Date().toISOString() : null
+    })
     .in("id", parsed.split_ids);
   if (updErr) throw updErr;
 
@@ -202,12 +229,19 @@ export async function cancelSettlement(id: string) {
   const supabase = createClient();
   const { data: settlement, error: sErr } = await supabase
     .from("settlements")
-    .select("id, status")
+    .select("id, status, total_amount, amount_paid")
     .eq("id", id)
     .maybeSingle();
   if (sErr) throw sErr;
   if (!settlement) throw new Error("Settlement not found.");
-  if (settlement.status === "paid") throw new Error("Cannot cancel a fully paid settlement.");
+  // Allow cancelling a fully-offset (zero-amount) settlement even though
+  // its status is "paid" — no real money was exchanged, so it's safe to
+  // unwind. Block cancelling settlements with actual payments recorded.
+  const wasFullyOffset =
+    Number(settlement.total_amount) <= 0.005 && Number(settlement.amount_paid) <= 0.005;
+  if (settlement.status === "paid" && !wasFullyOffset) {
+    throw new Error("Cannot cancel a fully paid settlement.");
+  }
   if (settlement.status === "cancelled") return;
 
   const { data: items } = await supabase

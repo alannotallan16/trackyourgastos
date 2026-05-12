@@ -52,6 +52,10 @@ export default async function SettlementDetailPage({ params }: { params: { id: s
   const fromName = profilesById.get(settlement.from_user_id)?.display_name ?? "—";
   const toName = profilesById.get(settlement.to_user_id)?.display_name ?? "—";
 
+  // Settlements with no attached items are "household-net" settlements —
+  // they represent the optimized cross-household payment without specific
+  // expense-share attribution.
+  const isNetSettlement = items.length === 0;
   // Detect bilateral: any item whose owner ≠ settlement.from_user_id means
   // this settlement has offsetting items (going the other direction).
   const isBilateral = items.some((item) => {
@@ -81,7 +85,7 @@ export default async function SettlementDetailPage({ params }: { params: { id: s
 
       <div className="flex items-center gap-3 flex-wrap">
         <SettlementStatusBadge status={settlement.status} />
-        {isBilateral && <Badge color="blue">Bilateral netting</Badge>}
+        {isNetSettlement ? <Badge color="green">Household net</Badge> : isBilateral && <Badge color="blue">Bilateral netting</Badge>}
         {settlement.notes && <span className="text-sm text-slate-500">{settlement.notes}</span>}
       </div>
 
@@ -118,9 +122,20 @@ export default async function SettlementDetailPage({ params }: { params: { id: s
 
       <div className="card overflow-hidden p-0">
         <div className="px-5 py-3 border-b border-slate-100">
-          <h2 className="text-sm font-semibold text-brand-navy">Included expenses ({items.length})</h2>
+          <h2 className="text-sm font-semibold text-brand-navy">
+            {isNetSettlement ? "Reconciliation" : `Included expenses (${items.length})`}
+          </h2>
         </div>
-        {items.length === 0 ? (
+        {isNetSettlement ? (
+          <div className="px-5 py-6 text-sm space-y-2">
+            <p className="text-slate-700">
+              <strong className="text-brand-navy">Household-net settlement.</strong> This is the optimized payment that reduces the overall household balance — no specific expense shares are attached.
+            </p>
+            <p className="text-slate-500 text-xs">
+              When you record payment here, balances update directly. The underlying expense shares stay tagged as their original status; switch to <strong>Detailed</strong> mode on the settlements page when you want share-level reconciliation.
+            </p>
+          </div>
+        ) : items.length === 0 ? (
           <p className="px-5 py-6 text-sm text-slate-500 text-center">No items.</p>
         ) : (
           <table className="min-w-full text-sm">

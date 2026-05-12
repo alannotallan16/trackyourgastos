@@ -138,6 +138,64 @@ export async function createSettlement(payload: CreateSettlementPayload): Promis
 }
 
 // ---------------------------------------------------------------------------
+// Create net settlement (household-net mode)
+//
+// "Net" settlements don't attach specific expense_splits. They represent the
+// optimized payment that reduces the overall household balance — typically
+// produced by the greedy settlementSuggestions output. Because no items are
+// attached, no expense_splits are mutated to "in_settlement" / "settled".
+// Recording a payment still updates balances correctly: settlement_payments
+// already feed into computeBalances on the read side.
+// ---------------------------------------------------------------------------
+const NetSchema = z.object({
+  from_user_id: z.string().uuid(),
+  to_user_id: z.string().uuid(),
+  amount: z.coerce.number().positive(),
+  currency: z.string().default("PHP"),
+  notes: z.string().nullable().optional()
+});
+
+export type CreateNetSettlementPayload = z.infer<typeof NetSchema>;
+
+export async function createNetSettlement(payload: CreateNetSettlementPayload): Promise<{ id: string }> {
+  const parsed = NetSchema.parse(payload);
+  if (parsed.from_user_id === parsed.to_user_id) {
+    throw new Error("Payer and recipient must differ.");
+  }
+
+  const supabase = createClient();
+  const {
+    data: { user }
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated.");
+
+  const total = round2(parsed.amount);
+  if (total <= 0) throw new Error("Settlement amount must be positive.");
+
+  const { data: inserted, error: insErr } = await supabase
+    .from("settlements")
+    .insert({
+      from_user_id: parsed.from_user_id,
+      to_user_id: parsed.to_user_id,
+      currency: parsed.currency,
+      total_amount: total,
+      amount_paid: 0,
+      remaining_amount: total,
+      status: "open",
+      notes: parsed.notes ?? null,
+      created_by: user.id
+    })
+    .select("id")
+    .single();
+  if (insErr || !inserted) throw insErr ?? new Error("Failed to create settlement.");
+
+  revalidatePath("/settlements");
+  revalidatePath(`/settlements/${inserted.id}`);
+  revalidatePath("/dashboard");
+  return { id: inserted.id };
+}
+
+// ---------------------------------------------------------------------------
 // Record payment against a settlement
 // ---------------------------------------------------------------------------
 const PaymentSchema = z.object({

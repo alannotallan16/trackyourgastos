@@ -2,22 +2,34 @@
 
 import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { cancelSettlement, recordPayment } from "../actions";
+import { cancelBatch, recordPayment } from "../actions";
 import { formatMoney } from "@/lib/format";
 import { createClient } from "@/lib/supabase/client";
 import { Paperclip, Plus, X } from "@/components/ui/icons";
 
 interface Props {
-  settlementId: string;
-  remaining: number;
-  currency: string;
-  canRecordPayment: boolean;
+  batchId: string;
+  /** If provided, the modal records a payment specifically against this result. */
+  resultId?: string;
+  remaining?: number;
+  currency?: string;
   canCancel: boolean;
+  hasAnyPayment: boolean;
+  /** If true, render only the "Record payment" button (no cancel) and use a smaller button. */
+  inline?: boolean;
 }
 
 const RECEIPTS_BUCKET = process.env.NEXT_PUBLIC_SUPABASE_RECEIPTS_BUCKET || "receipts";
 
-export function SettlementDetailActions({ settlementId, remaining, currency, canRecordPayment, canCancel }: Props) {
+export function BatchDetailActions({
+  batchId,
+  resultId,
+  remaining = 0,
+  currency = "PHP",
+  canCancel,
+  hasAnyPayment,
+  inline
+}: Props) {
   const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
   const [open, setOpen] = useState(false);
@@ -35,25 +47,36 @@ export function SettlementDetailActions({ settlementId, remaining, currency, can
     allow_overpay: false
   });
 
-  function closeAndReset() {
+  function reset() {
     setOpen(false);
     setFile(null);
     setErr(null);
+    setPayment({
+      payment_date: new Date().toISOString().slice(0, 10),
+      amount: remaining,
+      payment_method: "",
+      reference_number: "",
+      notes: "",
+      allow_overpay: false
+    });
     if (fileRef.current) fileRef.current.value = "";
   }
 
-  async function submitPayment(e: React.FormEvent) {
+  async function submit(e: React.FormEvent) {
     e.preventDefault();
     setErr(null);
+    if (!resultId) {
+      setErr("This payment is missing a target result.");
+      return;
+    }
 
     let attachment_path: string | null = null;
-
     if (file) {
       try {
         setUploading(true);
         const supabase = createClient();
         const cleanName = file.name.replace(/[^a-zA-Z0-9.\-_]/g, "_");
-        const path = `settlement-payments/${settlementId}/${Date.now()}-${cleanName}`;
+        const path = `settlement-payments/${batchId}/${Date.now()}-${cleanName}`;
         const { error: upErr } = await supabase.storage
           .from(RECEIPTS_BUCKET)
           .upload(path, file, { upsert: false, contentType: file.type || "application/octet-stream" });
@@ -70,7 +93,7 @@ export function SettlementDetailActions({ settlementId, remaining, currency, can
     start(async () => {
       try {
         await recordPayment({
-          settlement_id: settlementId,
+          settlement_batch_result_id: resultId,
           payment_date: payment.payment_date,
           amount: Number(payment.amount) || 0,
           payment_method: payment.payment_method || null,
@@ -79,7 +102,7 @@ export function SettlementDetailActions({ settlementId, remaining, currency, can
           attachment_path,
           allow_overpay: payment.allow_overpay
         });
-        closeAndReset();
+        reset();
         router.refresh();
       } catch (e: any) {
         setErr(e?.message ?? "Failed to record payment.");
@@ -88,10 +111,10 @@ export function SettlementDetailActions({ settlementId, remaining, currency, can
   }
 
   function onCancel() {
-    if (!confirm("Cancel this settlement? Included expense shares will return to unpaid.")) return;
+    if (!confirm("Cancel this settlement? Included expenses will return to Unsettled.")) return;
     start(async () => {
       try {
-        await cancelSettlement(settlementId);
+        await cancelBatch(batchId);
         router.refresh();
       } catch (e: any) {
         alert(e?.message ?? "Failed to cancel.");
@@ -103,26 +126,33 @@ export function SettlementDetailActions({ settlementId, remaining, currency, can
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <button
-        className="btn-primary text-sm"
-        onClick={() => setOpen(true)}
-        disabled={!canRecordPayment || busy}
-      >
-        <Plus className="h-4 w-4" />
-        Record payment
-      </button>
-      {canCancel && (
-        <button className="btn-secondary text-sm" onClick={onCancel} disabled={busy}>
+      {resultId && (
+        <button
+          className={inline ? "btn-secondary !py-1.5 !px-3 text-xs" : "btn-primary text-sm"}
+          onClick={() => setOpen(true)}
+          disabled={busy || remaining <= 0.005}
+        >
+          <Plus className="h-4 w-4" />
+          Record payment
+        </button>
+      )}
+      {canCancel && !inline && (
+        <button
+          className="btn-secondary text-sm"
+          onClick={onCancel}
+          disabled={busy || hasAnyPayment}
+          title={hasAnyPayment ? "Refund recorded payments first" : ""}
+        >
           Cancel settlement
         </button>
       )}
 
-      {open && (
+      {open && resultId && (
         <div className="fixed inset-0 bg-brand-navy/40 flex items-end md:items-center justify-center p-4 z-40">
-          <form className="bg-white rounded-2xl shadow-card-hover w-full max-w-md p-5 space-y-3" onSubmit={submitPayment}>
+          <form className="bg-white rounded-2xl shadow-card-hover w-full max-w-md p-5 space-y-3" onSubmit={submit}>
             <div className="flex items-center justify-between">
               <h2 className="font-semibold text-lg text-brand-navy">Record payment</h2>
-              <button type="button" onClick={closeAndReset} aria-label="Close">
+              <button type="button" onClick={reset} aria-label="Close">
                 <X className="h-5 w-5 text-slate-500" />
               </button>
             </div>
@@ -227,7 +257,7 @@ export function SettlementDetailActions({ settlementId, remaining, currency, can
             {err && <p className="text-sm text-brand-danger">{err}</p>}
 
             <div className="flex justify-end gap-2 pt-2">
-              <button type="button" className="btn-secondary" onClick={closeAndReset} disabled={busy}>
+              <button type="button" className="btn-secondary" onClick={reset} disabled={busy}>
                 Cancel
               </button>
               <button className="btn-primary" disabled={busy}>

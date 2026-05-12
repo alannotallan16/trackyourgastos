@@ -1,7 +1,15 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import type { Category, Expense, ExpenseSplit, Profile, Settlement } from "@/lib/types";
+import type {
+  Category,
+  Expense,
+  ExpenseSplit,
+  Profile,
+  SettlementBatch,
+  SettlementBatchResult,
+  SettlementPayment
+} from "@/lib/types";
 import type { UserBalance } from "@/lib/balances";
 import { formatMoney } from "@/lib/format";
 import { StatCard } from "@/components/ui/StatCard";
@@ -11,12 +19,14 @@ interface Props {
   profiles: Profile[];
   expenses: Expense[];
   splits: ExpenseSplit[];
-  settlements: Settlement[];
+  batches: SettlementBatch[];
+  batchResults: SettlementBatchResult[];
+  payments: SettlementPayment[];
   categories: Category[];
   balances: UserBalance[];
 }
 
-export function ReportsClient({ profiles, expenses, splits, settlements, categories, balances }: Props) {
+export function ReportsClient({ profiles, expenses, splits, batches, batchResults, payments, categories, balances }: Props) {
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [includeSettlements, setIncludeSettlements] = useState(true);
@@ -59,6 +69,27 @@ export function ReportsClient({ profiles, expenses, splits, settlements, categor
     });
   }
 
+  const batchById = new Map(batches.map((b) => [b.id, b]));
+
+  function buildSettlementRows() {
+    return batchResults.map((r) => {
+      const b = batchById.get(r.settlement_batch_id);
+      return {
+        Created: b?.created_at.slice(0, 10) ?? "",
+        Ref: b?.settlement_number ?? "",
+        From: profilesById.get(r.from_user_id)?.display_name ?? "",
+        To: profilesById.get(r.to_user_id)?.display_name ?? "",
+        Amount: Number(r.amount),
+        Paid: Number(r.amount_paid),
+        Remaining: Number(r.remaining_amount),
+        "Result status": r.status,
+        "Batch status": b?.status ?? "",
+        Currency: r.currency,
+        "Batch notes": b?.notes ?? ""
+      } as Record<string, string | number>;
+    });
+  }
+
   function downloadCSV() {
     const rows = buildRows();
     const headers = rows[0] ? Object.keys(rows[0]) : [];
@@ -66,26 +97,13 @@ export function ReportsClient({ profiles, expenses, splits, settlements, categor
       headers.join(","),
       ...rows.map((r) => headers.map((h) => csvField(r[h])).join(","))
     ];
-    if (includeSettlements && settlements.length) {
+    if (includeSettlements && batchResults.length) {
+      const sRows = buildSettlementRows();
+      const sHeaders = Object.keys(sRows[0] ?? {});
       lines.push("");
-      lines.push("Settlements");
-      lines.push(["Created", "Ref", "From", "To", "Total", "Paid", "Remaining", "Status", "Currency", "Notes"].join(","));
-      for (const s of settlements) {
-        lines.push(
-          [
-            s.created_at.slice(0, 10),
-            s.settlement_number,
-            profilesById.get(s.from_user_id)?.display_name ?? "",
-            profilesById.get(s.to_user_id)?.display_name ?? "",
-            String(s.total_amount),
-            String(s.amount_paid),
-            String(s.remaining_amount),
-            s.status,
-            s.currency,
-            csvField(s.notes ?? "")
-          ].join(",")
-        );
-      }
+      lines.push("Settlement payments");
+      lines.push(sHeaders.join(","));
+      for (const r of sRows) lines.push(sHeaders.map((h) => csvField(r[h])).join(","));
     }
     download(new Blob([lines.join("\n")], { type: "text/csv" }), "expenses.csv");
   }
@@ -95,22 +113,9 @@ export function ReportsClient({ profiles, expenses, splits, settlements, categor
     const wb = XLSX.utils.book_new();
     const ws = XLSX.utils.json_to_sheet(buildRows());
     XLSX.utils.book_append_sheet(wb, ws, "Expenses");
-    if (includeSettlements && settlements.length) {
-      const ws2 = XLSX.utils.json_to_sheet(
-        settlements.map((s) => ({
-          Created: s.created_at.slice(0, 10),
-          Ref: s.settlement_number,
-          From: profilesById.get(s.from_user_id)?.display_name ?? "",
-          To: profilesById.get(s.to_user_id)?.display_name ?? "",
-          Total: Number(s.total_amount),
-          Paid: Number(s.amount_paid),
-          Remaining: Number(s.remaining_amount),
-          Status: s.status,
-          Currency: s.currency,
-          Notes: s.notes ?? ""
-        }))
-      );
-      XLSX.utils.book_append_sheet(wb, ws2, "Settlements");
+    if (includeSettlements && batchResults.length) {
+      const ws2 = XLSX.utils.json_to_sheet(buildSettlementRows());
+      XLSX.utils.book_append_sheet(wb, ws2, "Settlement payments");
     }
     XLSX.writeFile(wb, "expenses.xlsx");
   }
@@ -127,28 +132,20 @@ export function ReportsClient({ profiles, expenses, splits, settlements, categor
     const head = rows[0] ? [Object.keys(rows[0])] : [[]];
     const body = rows.map((r) => head[0].map((h) => formatCell(r[h])));
     autoTable(doc, { head, body, startY: 22, styles: { fontSize: 8 } });
-    if (includeSettlements && settlements.length) {
+    if (includeSettlements && batchResults.length) {
       doc.addPage();
-      doc.text("Settlements", 14, 16);
-      const sHead = [["Created", "Ref", "From", "To", "Total", "Paid", "Remaining", "Status", "Notes"]];
-      const sBody = settlements.map((s) => [
-        s.created_at.slice(0, 10),
-        s.settlement_number,
-        profilesById.get(s.from_user_id)?.display_name ?? "",
-        profilesById.get(s.to_user_id)?.display_name ?? "",
-        Number(s.total_amount).toFixed(2),
-        Number(s.amount_paid).toFixed(2),
-        Number(s.remaining_amount).toFixed(2),
-        s.status,
-        s.notes ?? ""
-      ]);
+      doc.text("Settlement payments", 14, 16);
+      const sRows = buildSettlementRows();
+      const sHead = [Object.keys(sRows[0] ?? {})];
+      const sBody = sRows.map((r) => sHead[0].map((h) => formatCell(r[h])));
       autoTable(doc, { head: sHead, body: sBody, startY: 22, styles: { fontSize: 8 } });
     }
     doc.save("expenses.pdf");
   }
 
   const totalFiltered = filtered.reduce((a, b) => a + Number(b.total_amount), 0);
-  const totalSettlements = settlements.reduce((a, b) => a + Number(b.total_amount), 0);
+  const totalSettlements = batchResults.reduce((a, r) => a + Number(r.amount), 0);
+  const totalSettlementsPaid = payments.reduce((a, p) => a + Number(p.amount), 0);
 
   return (
     <div className="space-y-4">
@@ -170,7 +167,7 @@ export function ReportsClient({ profiles, expenses, splits, settlements, categor
         <StatCard
           label="Settlements"
           value={formatMoney(totalSettlements)}
-          hint={`${settlements.length} recorded`}
+          hint={`${batches.length} batch${batches.length === 1 ? "" : "es"} · ${formatMoney(totalSettlementsPaid)} paid`}
           icon={ArrowLeftRight}
           iconBg="purple"
         />

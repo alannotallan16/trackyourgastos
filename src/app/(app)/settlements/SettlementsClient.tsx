@@ -1,14 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import { createNetSettlement } from "./actions";
 import { formatDate, formatMoney } from "@/lib/format";
 import type { Category, Expense, ExpenseSplit, Profile, Settlement } from "@/lib/types";
 import type { DebtSuggestion, UserBalance } from "@/lib/balances";
 import { findUnpaidShares } from "@/lib/balances";
 import { StatCard } from "@/components/ui/StatCard";
 import { Badge } from "@/components/ui/Badge";
-import { ArrowRight, Plus, Users, Wallet } from "@/components/ui/icons";
+import { ArrowRight, Plus, Users, Wallet, X } from "@/components/ui/icons";
 import { CreateSettlementModal } from "./CreateSettlementModal";
 
 interface Props {
@@ -23,10 +25,18 @@ interface Props {
 
 const PERSON_ICON_BG = ["green", "blue", "purple"] as const;
 
-interface DraftSeed {
+type Mode = "quick" | "detailed";
+
+interface BilateralDraft {
   participant_a_id?: string;
   participant_b_id?: string;
   suggested_amount?: number;
+}
+
+interface QuickDraft {
+  from_user_id: string;
+  to_user_id: string;
+  amount: number;
 }
 
 export function SettlementsClient({
@@ -38,11 +48,53 @@ export function SettlementsClient({
   balances,
   suggestions
 }: Props) {
+  const router = useRouter();
   const profilesById = useMemo(() => new Map(profiles.map((p) => [p.id, p])), [profiles]);
-  const [draftSeed, setDraftSeed] = useState<DraftSeed | null>(null);
+
+  const [mode, setMode] = useState<Mode>("quick");
+  const [bilateralDraft, setBilateralDraft] = useState<BilateralDraft | null>(null);
+  const [quickDraft, setQuickDraft] = useState<QuickDraft | null>(null);
+  const [quickNotes, setQuickNotes] = useState("");
+  const [pending, start] = useTransition();
+  const [err, setErr] = useState<string | null>(null);
 
   const open = settlements.filter((s) => s.status === "open" || s.status === "partially_paid");
   const history = settlements.filter((s) => s.status === "paid" || s.status === "cancelled");
+
+  function handleSuggestedCreate(s: DebtSuggestion) {
+    setErr(null);
+    if (mode === "quick") {
+      setQuickNotes("");
+      setQuickDraft({ from_user_id: s.from_user_id, to_user_id: s.to_user_id, amount: s.amount });
+    } else {
+      setBilateralDraft({
+        participant_a_id: s.from_user_id,
+        participant_b_id: s.to_user_id,
+        suggested_amount: s.amount
+      });
+    }
+  }
+
+  function submitQuick(e: React.FormEvent) {
+    e.preventDefault();
+    if (!quickDraft) return;
+    setErr(null);
+    start(async () => {
+      try {
+        const { id } = await createNetSettlement({
+          from_user_id: quickDraft.from_user_id,
+          to_user_id: quickDraft.to_user_id,
+          amount: quickDraft.amount,
+          currency: "PHP",
+          notes: quickNotes || null
+        });
+        setQuickDraft(null);
+        router.push(`/settlements/${id}`);
+      } catch (e: any) {
+        setErr(e?.message ?? "Failed to create settlement.");
+      }
+    });
+  }
 
   return (
     <div className="space-y-4">
@@ -65,12 +117,24 @@ export function SettlementsClient({
       </div>
 
       <div className="card">
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-sm font-semibold text-brand-navy">Suggested settlements</h2>
-          <button className="btn-primary text-sm" onClick={() => setDraftSeed({})}>
-            <Plus className="h-4 w-4" />
-            Create settlement
-          </button>
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+          <div>
+            <h2 className="text-sm font-semibold text-brand-navy">Suggested settlements</h2>
+            <p className="text-xs text-slate-500">
+              {mode === "quick"
+                ? "Minimum-transactions payments across the whole household."
+                : "Reconcile expense shares between two people in detail."}
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <ModeToggle mode={mode} onChange={setMode} />
+            {mode === "detailed" && (
+              <button className="btn-primary text-sm" onClick={() => setBilateralDraft({})}>
+                <Plus className="h-4 w-4" />
+                Create settlement
+              </button>
+            )}
+          </div>
         </div>
         {suggestions.length === 0 ? (
           <p className="text-sm text-slate-500">All balances reconciled.</p>
@@ -79,7 +143,10 @@ export function SettlementsClient({
             {suggestions.map((s, i) => {
               const candidateCount = findUnpaidShares(expenses, splits, s.from_user_id, s.to_user_id).length;
               return (
-                <li key={i} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-100 px-3 py-2">
+                <li
+                  key={i}
+                  className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-100 px-3 py-2"
+                >
                   <span className="flex items-center gap-2 min-w-0">
                     <span className="font-medium text-brand-navy">{profilesById.get(s.from_user_id)?.display_name}</span>
                     <ArrowRight className="h-4 w-4 text-slate-400" />
@@ -88,25 +155,30 @@ export function SettlementsClient({
                   <div className="flex items-center gap-3">
                     <div className="text-right text-xs text-slate-500">
                       <div className="tabular-nums font-semibold text-brand-danger">{formatMoney(s.amount)}</div>
-                      <div>{candidateCount} unpaid share{candidateCount === 1 ? "" : "s"}</div>
+                      {mode === "detailed" && (
+                        <div>
+                          {candidateCount} unpaid share{candidateCount === 1 ? "" : "s"} between them
+                        </div>
+                      )}
                     </div>
                     <button
                       className="btn-secondary text-xs !px-3 !py-1.5"
-                      onClick={() =>
-                        setDraftSeed({
-                          participant_a_id: s.from_user_id,
-                          participant_b_id: s.to_user_id,
-                          suggested_amount: s.amount
-                        })
-                      }
+                      onClick={() => handleSuggestedCreate(s)}
                     >
-                      Create settlement
+                      {mode === "quick" ? "Create" : "Pick shares…"}
                     </button>
                   </div>
                 </li>
               );
             })}
           </ul>
+        )}
+        {mode === "quick" && (
+          <p className="mt-3 text-xs text-slate-500">
+            Quick mode creates the settlement at the suggested global-net amount with no expense-share attachment. Recording payment reduces balances directly. Switch to{" "}
+            <button type="button" onClick={() => setMode("detailed")} className="text-brand-green underline hover:no-underline">Detailed</button>{" "}
+            to pick specific shares.
+          </p>
         )}
       </div>
 
@@ -190,17 +262,102 @@ export function SettlementsClient({
         )}
       </div>
 
+      {/* Detailed (bilateral) modal */}
       <CreateSettlementModal
-        open={draftSeed !== null}
-        onClose={() => setDraftSeed(null)}
+        open={bilateralDraft !== null}
+        onClose={() => setBilateralDraft(null)}
         profiles={profiles}
         expenses={expenses}
         splits={splits}
         categories={categories}
-        initialParticipantAId={draftSeed?.participant_a_id}
-        initialParticipantBId={draftSeed?.participant_b_id}
-        suggestedAmount={draftSeed?.suggested_amount}
+        initialParticipantAId={bilateralDraft?.participant_a_id}
+        initialParticipantBId={bilateralDraft?.participant_b_id}
+        suggestedAmount={bilateralDraft?.suggested_amount}
       />
+
+      {/* Quick (household-net) confirm */}
+      {quickDraft && (
+        <div className="fixed inset-0 bg-brand-navy/40 flex items-end md:items-center justify-center p-4 z-40">
+          <form
+            className="bg-white rounded-2xl shadow-card-hover w-full max-w-md p-5 space-y-3"
+            onSubmit={submitQuick}
+          >
+            <div className="flex items-center justify-between">
+              <h2 className="font-semibold text-lg text-brand-navy">Create settlement</h2>
+              <button type="button" onClick={() => setQuickDraft(null)} aria-label="Close">
+                <X className="h-5 w-5 text-slate-500" />
+              </button>
+            </div>
+            <div className="rounded-xl bg-emerald-50/60 border border-emerald-200 px-3 py-3">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <div className="flex items-center gap-2 text-brand-navy">
+                  <span className="font-medium">{profilesById.get(quickDraft.from_user_id)?.display_name}</span>
+                  <ArrowRight className="h-4 w-4 text-slate-400" />
+                  <span className="font-medium">{profilesById.get(quickDraft.to_user_id)?.display_name}</span>
+                </div>
+                <div className="text-lg font-semibold tabular-nums text-brand-navy">
+                  {formatMoney(quickDraft.amount)}
+                </div>
+              </div>
+              <p className="text-xs text-slate-500 mt-1">
+                Household-net settlement. No specific expense shares are attached; recording payment reduces balances directly.
+              </p>
+            </div>
+            <div>
+              <label className="label">Notes (optional)</label>
+              <input
+                className="input"
+                type="text"
+                value={quickNotes}
+                onChange={(e) => setQuickNotes(e.target.value)}
+                placeholder="e.g. End-of-month reconciliation"
+              />
+            </div>
+            {err && <p className="text-sm text-brand-danger">{err}</p>}
+            <div className="flex justify-end gap-2 pt-2">
+              <button type="button" className="btn-secondary" onClick={() => setQuickDraft(null)} disabled={pending}>
+                Cancel
+              </button>
+              <button className="btn-primary" disabled={pending}>
+                {pending ? "Creating…" : "Create settlement"}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ModeToggle({ mode, onChange }: { mode: Mode; onChange: (m: Mode) => void }) {
+  return (
+    <div className="inline-flex rounded-full bg-slate-100 p-1 text-xs" role="tablist" aria-label="Settlement mode">
+      <button
+        type="button"
+        role="tab"
+        aria-selected={mode === "quick"}
+        onClick={() => onChange("quick")}
+        className={
+          mode === "quick"
+            ? "px-3 py-1 rounded-full font-medium bg-brand-gradient text-white shadow-sm"
+            : "px-3 py-1 rounded-full text-slate-600 hover:text-brand-navy"
+        }
+      >
+        Quick
+      </button>
+      <button
+        type="button"
+        role="tab"
+        aria-selected={mode === "detailed"}
+        onClick={() => onChange("detailed")}
+        className={
+          mode === "detailed"
+            ? "px-3 py-1 rounded-full font-medium bg-brand-gradient text-white shadow-sm"
+            : "px-3 py-1 rounded-full text-slate-600 hover:text-brand-navy"
+        }
+      >
+        Detailed
+      </button>
     </div>
   );
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { formatDate, formatMoney } from "@/lib/format";
 import type { Category, Expense, ExpenseSplit, Profile } from "@/lib/types";
 
@@ -12,6 +12,12 @@ interface Props {
   categories: Category[];
 }
 
+type SortKey = "date" | "paid_by" | "merchant" | "category" | "total" | `share:${string}`;
+type SortDir = "asc" | "desc";
+type PageSize = 25 | 50 | 100 | "all";
+
+const PAGE_SIZES: PageSize[] = [25, 50, 100, "all"];
+
 export function ExpenseTable({ expenses, splits, profiles, categories }: Props) {
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
@@ -19,6 +25,11 @@ export function ExpenseTable({ expenses, splits, profiles, categories }: Props) 
   const [categoryId, setCategoryId] = useState("");
   const [merchant, setMerchant] = useState("");
   const [currency, setCurrency] = useState("");
+
+  const [sortKey, setSortKey] = useState<SortKey>("date");
+  const [sortDir, setSortDir] = useState<SortDir>("desc");
+  const [pageSize, setPageSize] = useState<PageSize>(50);
+  const [page, setPage] = useState(1);
 
   const profilesById = useMemo(() => new Map(profiles.map((p) => [p.id, p])), [profiles]);
   const categoriesById = useMemo(() => new Map(categories.map((c) => [c.id, c])), [categories]);
@@ -43,8 +54,83 @@ export function ExpenseTable({ expenses, splits, profiles, categories }: Props) 
     });
   }, [expenses, from, to, paidBy, categoryId, currency, merchant]);
 
+  const sorted = useMemo(() => {
+    const arr = [...filtered];
+    const dir = sortDir === "asc" ? 1 : -1;
+    arr.sort((a, b) => {
+      let av: string | number = "";
+      let bv: string | number = "";
+      if (sortKey === "date") {
+        av = a.expense_date;
+        bv = b.expense_date;
+      } else if (sortKey === "merchant") {
+        av = a.merchant.toLowerCase();
+        bv = b.merchant.toLowerCase();
+      } else if (sortKey === "total") {
+        av = Number(a.total_amount);
+        bv = Number(b.total_amount);
+      } else if (sortKey === "paid_by") {
+        av = profilesById.get(a.paid_by_user_id)?.display_name ?? "";
+        bv = profilesById.get(b.paid_by_user_id)?.display_name ?? "";
+      } else if (sortKey === "category") {
+        av = (a.category_id && categoriesById.get(a.category_id)?.name) || "";
+        bv = (b.category_id && categoriesById.get(b.category_id)?.name) || "";
+      } else if (sortKey.startsWith("share:")) {
+        const uid = sortKey.slice(6);
+        av = Number(splitsByExpense.get(a.id)?.find((s) => s.user_id === uid)?.calculated_amount ?? 0);
+        bv = Number(splitsByExpense.get(b.id)?.find((s) => s.user_id === uid)?.calculated_amount ?? 0);
+      }
+      if (av < bv) return -1 * dir;
+      if (av > bv) return 1 * dir;
+      return a.id < b.id ? -1 : 1;
+    });
+    return arr;
+  }, [filtered, sortKey, sortDir, profilesById, categoriesById, splitsByExpense]);
+
+  const totalRows = sorted.length;
+  const effectivePageSize = pageSize === "all" ? Math.max(totalRows, 1) : pageSize;
+  const pageCount = Math.max(1, Math.ceil(totalRows / effectivePageSize));
+  const safePage = Math.min(page, pageCount);
+  const startIdx = (safePage - 1) * effectivePageSize;
+  const visible = useMemo(
+    () => sorted.slice(startIdx, startIdx + effectivePageSize),
+    [sorted, startIdx, effectivePageSize]
+  );
+
+  useEffect(() => {
+    setPage(1);
+  }, [from, to, paidBy, categoryId, merchant, currency, sortKey, sortDir, pageSize]);
+
   const currencies = useMemo(() => Array.from(new Set(expenses.map((e) => e.currency))), [expenses]);
   const totalAmount = filtered.reduce((a, b) => a + Number(b.total_amount), 0);
+
+  const toggleSort = (key: SortKey) => {
+    if (sortKey === key) {
+      setSortDir(sortDir === "asc" ? "desc" : "asc");
+    } else {
+      setSortKey(key);
+      setSortDir(key === "date" || key === "total" || key.startsWith("share:") ? "desc" : "asc");
+    }
+  };
+  const arrow = (key: SortKey) => (sortKey === key ? (sortDir === "asc" ? " ▲" : " ▼") : "");
+
+  const sortableHeader = (key: SortKey, label: string, align: "left" | "right" = "left") => (
+    <th className={`table-cell text-${align}`}>
+      <button
+        type="button"
+        onClick={() => toggleSort(key)}
+        className={`inline-flex items-center gap-0.5 font-semibold hover:text-brand-dark ${
+          align === "right" ? "justify-end w-full" : ""
+        }`}
+      >
+        <span>{label}</span>
+        <span className="text-slate-500">{arrow(key)}</span>
+      </button>
+    </th>
+  );
+
+  const lastVisibleIdx = totalRows === 0 ? 0 : Math.min(startIdx + effectivePageSize, totalRows);
+  const firstVisibleIdx = totalRows === 0 ? 0 : startIdx + 1;
 
   return (
     <div className="space-y-3">
@@ -82,29 +168,36 @@ export function ExpenseTable({ expenses, splits, profiles, categories }: Props) 
         <table className="min-w-full text-sm">
           <thead className="bg-slate-100">
             <tr>
-              <th className="table-cell text-left">Date</th>
-              <th className="table-cell text-left">Paid by</th>
-              <th className="table-cell text-left">Merchant</th>
-              <th className="table-cell text-left">Category</th>
-              <th className="table-cell text-right">Total</th>
+              {sortableHeader("date", "Date")}
+              {sortableHeader("paid_by", "Paid by")}
+              {sortableHeader("merchant", "Merchant")}
+              {sortableHeader("category", "Category")}
+              {sortableHeader("total", "Total", "right")}
               <th className="table-cell text-left">Cur</th>
               {profiles.map((p) => (
                 <th key={p.id} className="table-cell text-right">
-                  {p.display_name}
+                  <button
+                    type="button"
+                    onClick={() => toggleSort(`share:${p.id}` as SortKey)}
+                    className="inline-flex items-center justify-end w-full gap-0.5 font-semibold hover:text-brand-dark"
+                  >
+                    <span>{p.display_name}</span>
+                    <span className="text-slate-500">{arrow(`share:${p.id}` as SortKey)}</span>
+                  </button>
                 </th>
               ))}
               <th className="table-cell text-center">📎</th>
             </tr>
           </thead>
           <tbody>
-            {filtered.length === 0 && (
+            {visible.length === 0 && (
               <tr>
                 <td className="table-cell" colSpan={6 + profiles.length + 1}>
                   <p className="text-slate-500 text-center py-6">No expenses match these filters.</p>
                 </td>
               </tr>
             )}
-            {filtered.map((e) => {
+            {visible.map((e) => {
               const sp = splitsByExpense.get(e.id) ?? [];
               const cat = e.category_id ? categoriesById.get(e.category_id) : null;
               return (
@@ -142,6 +235,50 @@ export function ExpenseTable({ expenses, splits, profiles, categories }: Props) 
             </tr>
           </tfoot>
         </table>
+
+        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 px-3 py-2 text-sm text-slate-600">
+          <div>
+            Showing {firstVisibleIdx}–{lastVisibleIdx} of {totalRows}
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <label className="flex items-center gap-1">
+              Rows per page
+              <select
+                className="input !w-auto !py-1"
+                value={String(pageSize)}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setPageSize(v === "all" ? "all" : (Number(v) as PageSize));
+                }}
+              >
+                {PAGE_SIZES.map((s) => (
+                  <option key={String(s)} value={String(s)}>
+                    {s === "all" ? "All" : s}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button
+              type="button"
+              className="btn-secondary !py-1 !px-3 text-sm"
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={safePage <= 1}
+            >
+              Prev
+            </button>
+            <span>
+              Page {safePage} of {pageCount}
+            </span>
+            <button
+              type="button"
+              className="btn-secondary !py-1 !px-3 text-sm"
+              onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
+              disabled={safePage >= pageCount}
+            >
+              Next
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );

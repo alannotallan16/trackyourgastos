@@ -10,9 +10,9 @@
 -- Replace these emails with the real ones used to sign up:
 do $$
 declare
-  alan_email text := 'alan@example.com';
-  cel_email  text := 'cel@example.com';
-  len_email  text := 'len@example.com';
+  alan_email text := 'lanskie16@gmail.com';
+  cel_email  text := 'marieramos.hcs@gmail.com';
+  len_email  text := 'ramosmari24@gmail.com';
   alan_id uuid;
   cel_id  uuid;
   len_id  uuid;

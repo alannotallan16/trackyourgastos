@@ -1,10 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
-export default function LoginPage() {
+function LoginForm() {
   const router = useRouter();
   const search = useSearchParams();
   const supabase = createClient();
@@ -42,53 +42,61 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="min-h-screen flex items-center justify-center p-6">
-      <div className="card w-full max-w-md">
-        <h1 className="text-2xl font-semibold mb-1">TrackYourGastos</h1>
-        <p className="text-sm text-slate-600 mb-6">Sign in to continue.</p>
+    <div className="card w-full max-w-md">
+      <h1 className="text-2xl font-semibold mb-1">TrackYourGastos</h1>
+      <p className="text-sm text-slate-600 mb-6">Sign in to continue.</p>
 
-        <form className="space-y-4" onSubmit={onSubmit}>
+      <form className="space-y-4" onSubmit={onSubmit}>
+        <div>
+          <label className="label">Email</label>
+          <input
+            className="input"
+            type="email"
+            required
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            autoComplete="email"
+          />
+        </div>
+        {mode === "password" && (
           <div>
-            <label className="label">Email</label>
+            <label className="label">Password</label>
             <input
               className="input"
-              type="email"
+              type="password"
               required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              autoComplete="email"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoComplete="current-password"
             />
           </div>
-          {mode === "password" && (
-            <div>
-              <label className="label">Password</label>
-              <input
-                className="input"
-                type="password"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                autoComplete="current-password"
-              />
-            </div>
-          )}
+        )}
 
-          {error && <p className="text-sm text-red-600">{error}</p>}
-          {msg && <p className="text-sm text-emerald-600">{msg}</p>}
+        {error && <p className="text-sm text-red-600">{error}</p>}
+        {msg && <p className="text-sm text-emerald-600">{msg}</p>}
 
-          <button className="btn-primary w-full" disabled={busy}>
-            {busy ? "Signing in…" : mode === "password" ? "Sign in" : "Send magic link"}
-          </button>
-        </form>
-
-        <button
-          type="button"
-          className="mt-4 text-sm text-brand underline"
-          onClick={() => setMode((m) => (m === "password" ? "magic" : "password"))}
-        >
-          {mode === "password" ? "Use magic link instead" : "Use password instead"}
+        <button className="btn-primary w-full" disabled={busy}>
+          {busy ? "Signing in…" : mode === "password" ? "Sign in" : "Send magic link"}
         </button>
-      </div>
+      </form>
+
+      <button
+        type="button"
+        className="mt-4 text-sm text-brand underline"
+        onClick={() => setMode((m) => (m === "password" ? "magic" : "password"))}
+      >
+        {mode === "password" ? "Use magic link instead" : "Use password instead"}
+      </button>
+    </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <main className="min-h-screen flex items-center justify-center p-6">
+      <Suspense fallback={<div className="card w-full max-w-md">Loading…</div>}>
+        <LoginForm />
+      </Suspense>
     </main>
   );
 }

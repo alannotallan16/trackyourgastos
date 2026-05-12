@@ -1,14 +1,15 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import imageCompression from "browser-image-compression";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { ReceiptDropzone } from "@/components/ui/ReceiptDropzone";
 
 type Stage = "idle" | "compressing" | "ocr" | "uploading" | "done" | "error";
 
 export default function ScanPage() {
   const router = useRouter();
-  const fileRef = useRef<HTMLInputElement>(null);
   const [stage, setStage] = useState<Stage>("idle");
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -30,7 +31,6 @@ export default function ScanPage() {
       setStage("ocr");
       setProgress(15);
 
-      // Tesseract.js dynamic import (client-only)
       let text = "";
       try {
         const Tesseract = (await import("tesseract.js")).default;
@@ -43,7 +43,6 @@ export default function ScanPage() {
         });
         text = result?.data?.text ?? "";
       } catch (e) {
-        // fallback to OCR.Space if configured
         try {
           const fd = new FormData();
           fd.append("file", compressed, file.name);
@@ -74,54 +73,44 @@ export default function ScanPage() {
     }
   }
 
+  const busy = stage !== "idle" && stage !== "error";
+
   return (
     <div className="p-4 md:p-6 max-w-2xl mx-auto space-y-4">
-      <h1 className="text-xl font-semibold">Scan receipt</h1>
-      <p className="text-sm text-slate-600">
-        Take a photo or upload an image. We'll OCR it locally and pre-fill the expense form.
-      </p>
+      <PageHeader
+        title="Scan receipt"
+        subtitle="We'll OCR the image locally and pre-fill the expense form."
+      />
 
-      <div className="card flex flex-col gap-3">
-        <label className="btn-primary w-full md:w-auto text-center cursor-pointer">
-          📷 Take photo
-          <input
-            ref={fileRef}
-            type="file"
-            accept="image/*"
-            capture="environment"
-            className="hidden"
-            onChange={(e) => e.target.files?.[0] && handleFile(e.target.files[0])}
-          />
-        </label>
-        <label className="btn-secondary w-full md:w-auto text-center cursor-pointer">
-          🗂️ Upload from device
-          <input
-            type="file"
-            accept="image/*"
-            className="hidden"
-            onChange={(e) => e.target.files?.[0] && handleFile(e.target.files[0])}
-          />
-        </label>
+      <ReceiptDropzone onFile={handleFile} disabled={busy} />
+
+      <div className="text-center">
         <button
           type="button"
-          className="text-xs text-brand underline self-start"
+          className="text-sm text-slate-500 hover:text-brand-navy underline"
           onClick={() => router.push("/expenses/new")}
         >
-          Skip OCR and enter manually →
+          Skip OCR and enter manually
         </button>
       </div>
 
       {stage !== "idle" && (
-        <div className="card space-y-2">
-          <p className="text-sm">
-            <strong>{stageLabel(stage)}</strong>
-            {stage !== "error" && stage !== "done" ? "…" : ""}
-          </p>
-          <div className="w-full bg-slate-200 rounded h-2">
-            <div className="bg-brand h-2 rounded transition-all" style={{ width: `${progress}%` }} />
+        <div className="card space-y-3">
+          <div className="flex items-center justify-between text-sm">
+            <span className="font-medium text-brand-navy">
+              {stageLabel(stage)}
+              {stage !== "error" && stage !== "done" ? "…" : ""}
+            </span>
+            <span className="text-xs text-slate-500 tabular-nums">{progress}%</span>
           </div>
-          {error && <p className="text-sm text-red-600">{error}</p>}
-          {previewUrl && <img src={previewUrl} alt="" className="max-h-72 rounded border border-slate-200" />}
+          <div className="w-full bg-brand-bg rounded-full h-2 overflow-hidden">
+            <div className="bg-brand-gradient h-2 rounded-full transition-all" style={{ width: `${progress}%` }} />
+          </div>
+          {error && <p className="text-sm text-brand-danger">{error}</p>}
+          {previewUrl && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={previewUrl} alt="Receipt preview" className="max-h-72 rounded-xl border border-slate-200" />
+          )}
         </div>
       )}
     </div>
@@ -130,11 +119,17 @@ export default function ScanPage() {
 
 function stageLabel(s: Stage) {
   switch (s) {
-    case "compressing": return "Compressing image";
-    case "ocr": return "Reading receipt";
-    case "uploading": return "Uploading";
-    case "done": return "Done — opening review";
-    case "error": return "Error";
-    default: return "";
+    case "compressing":
+      return "Compressing image";
+    case "ocr":
+      return "Reading receipt";
+    case "uploading":
+      return "Uploading";
+    case "done":
+      return "Done — opening review";
+    case "error":
+      return "Error";
+    default:
+      return "";
   }
 }

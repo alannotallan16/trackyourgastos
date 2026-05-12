@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { parseReceiptText } from "@/lib/ocr";
 import { suggestFromMerchant } from "@/lib/categorize";
 import { getCategories, getMerchantRules, getProfiles, getSplitPresets } from "@/lib/data";
+import { PageHeader } from "@/components/ui/PageHeader";
 
 export const dynamic = "force-dynamic";
 
@@ -43,13 +44,15 @@ export default async function ReviewPage({ searchParams }: { searchParams: { rec
   const { data: signed } = await supabase.storage.from("receipts").createSignedUrl(receipt.storage_path, 60 * 30);
 
   return (
-    <div className="p-4 md:p-6 max-w-3xl mx-auto">
-      <h1 className="text-xl font-semibold mb-4">Review receipt</h1>
-      <p className="text-sm text-slate-600 mb-4">
-        {extracted.date || extracted.merchant || extracted.total
-          ? "We extracted what we could — please verify."
-          : "Couldn't auto-detect anything. Fill in the fields manually."}
-      </p>
+    <div className="p-4 md:p-6 max-w-3xl mx-auto space-y-4">
+      <PageHeader
+        title="Review receipt"
+        subtitle={
+          extracted.date || extracted.merchant || extracted.total
+            ? "We extracted what we could — please verify."
+            : "Couldn't auto-detect anything. Fill in the fields manually."
+        }
+      />
       <ExpenseForm
         profiles={profiles}
         categories={categories}

@@ -3,6 +3,7 @@
 import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { BrandLogo } from "@/components/ui/BrandLogo";
 
 function LoginForm() {
   const router = useRouter();
@@ -43,8 +44,10 @@ function LoginForm() {
 
   return (
     <div className="card w-full max-w-md">
-      <h1 className="text-2xl font-semibold mb-1">TrackYourGastos</h1>
-      <p className="text-sm text-slate-600 mb-6">Sign in to continue.</p>
+      <div className="flex flex-col items-center text-center pb-2">
+        <BrandLogo variant="full" />
+      </div>
+      <p className="text-sm text-slate-500 mb-6 text-center">Sign in to continue.</p>
 
       <form className="space-y-4" onSubmit={onSubmit}>
         <div>
@@ -72,8 +75,8 @@ function LoginForm() {
           </div>
         )}
 
-        {error && <p className="text-sm text-red-600">{error}</p>}
-        {msg && <p className="text-sm text-emerald-600">{msg}</p>}
+        {error && <p className="text-sm text-brand-danger">{error}</p>}
+        {msg && <p className="text-sm text-brand-green">{msg}</p>}
 
         <button className="btn-primary w-full" disabled={busy}>
           {busy ? "Signing in…" : mode === "password" ? "Sign in" : "Send magic link"}
@@ -82,7 +85,7 @@ function LoginForm() {
 
       <button
         type="button"
-        className="mt-4 text-sm text-brand underline"
+        className="mt-4 block w-full text-center text-sm text-brand-green hover:underline"
         onClick={() => setMode((m) => (m === "password" ? "magic" : "password"))}
       >
         {mode === "password" ? "Use magic link instead" : "Use password instead"}
@@ -93,7 +96,7 @@ function LoginForm() {
 
 export default function LoginPage() {
   return (
-    <main className="min-h-screen flex items-center justify-center p-6">
+    <main className="min-h-screen flex items-center justify-center p-6 bg-brand-bg">
       <Suspense fallback={<div className="card w-full max-w-md">Loading…</div>}>
         <LoginForm />
       </Suspense>

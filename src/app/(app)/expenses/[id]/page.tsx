@@ -4,6 +4,8 @@ import { ExpenseForm } from "@/components/ExpenseForm";
 import { DeleteExpenseButton } from "@/components/DeleteExpenseButton";
 import { createClient } from "@/lib/supabase/server";
 import { getCategories, getMerchantRules, getProfiles, getSplitPresets } from "@/lib/data";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { ChevronLeft } from "@/components/ui/icons";
 
 export const dynamic = "force-dynamic";
 
@@ -30,16 +32,19 @@ export default async function ExpenseDetailPage({ params }: { params: { id: stri
   }
 
   return (
-    <div className="p-4 md:p-6 max-w-3xl mx-auto">
-      <div className="flex items-center justify-between mb-4">
-        <h1 className="text-xl font-semibold">Edit expense</h1>
-        <div className="flex items-center gap-2">
-          <Link href="/expenses" className="text-sm text-brand underline">
-            ← All
-          </Link>
-          <DeleteExpenseButton id={expense.id} />
-        </div>
-      </div>
+    <div className="p-4 md:p-6 max-w-3xl mx-auto space-y-4">
+      <PageHeader
+        title="Edit expense"
+        actions={
+          <>
+            <Link href="/expenses" className="btn-ghost text-sm">
+              <ChevronLeft className="h-4 w-4" />
+              All expenses
+            </Link>
+            <DeleteExpenseButton id={expense.id} />
+          </>
+        }
+      />
       <ExpenseForm
         profiles={profiles}
         categories={categories}

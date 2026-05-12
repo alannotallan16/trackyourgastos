@@ -4,6 +4,8 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { deletePreset, savePreset, type PresetPayload } from "./actions";
 import type { Profile, SplitPreset, SplitType } from "@/lib/types";
+import { Badge } from "@/components/ui/Badge";
+import { Plus, X } from "@/components/ui/icons";
 
 interface Props {
   profiles: Profile[];
@@ -73,21 +75,24 @@ export function PresetsClient({ profiles, presets }: Props) {
   return (
     <div className="space-y-4">
       <div className="flex justify-end">
-        <button className="btn-primary text-sm" onClick={startNew}>➕ New preset</button>
+        <button className="btn-primary text-sm" onClick={startNew}>
+          <Plus className="h-4 w-4" />
+          New preset
+        </button>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         {presets.map((p) => (
-          <div key={p.id} className="card">
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="font-medium">{p.name}</p>
-                <p className="text-xs text-slate-500 capitalize">{p.split_type}</p>
-                {p.description && <p className="text-xs text-slate-500 mt-1">{p.description}</p>}
+          <div key={p.id} className="card-hover">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="font-semibold text-brand-navy">{p.name}</p>
+                <div className="mt-1"><Badge color={p.split_type === "equal" ? "green" : p.split_type === "percentage" ? "blue" : "purple"}>{p.split_type}</Badge></div>
+                {p.description && <p className="text-xs text-slate-500 mt-2">{p.description}</p>}
               </div>
-              <div className="flex gap-2 text-xs">
-                <button className="text-slate-600 underline" onClick={() => startEdit(p)}>Edit</button>
+              <div className="flex gap-3 text-xs shrink-0">
+                <button className="text-slate-600 hover:underline" onClick={() => startEdit(p)}>Edit</button>
                 <button
-                  className="text-red-600 underline"
+                  className="text-brand-danger hover:underline"
                   onClick={() => {
                     if (confirm(`Delete "${p.name}"?`)) start(async () => { await deletePreset(p.id); router.refresh(); });
                   }}
@@ -97,11 +102,11 @@ export function PresetsClient({ profiles, presets }: Props) {
                 </button>
               </div>
             </div>
-            <ul className="text-sm mt-2">
+            <ul className="text-sm mt-3 space-y-1">
               {p.members.map((m) => (
-                <li key={m.user_id} className="flex justify-between border-b border-slate-100 py-1">
-                  <span>{profilesById.get(m.user_id)?.display_name}</span>
-                  <span className="text-slate-600">
+                <li key={m.user_id} className="flex justify-between border-b border-slate-100 py-1.5">
+                  <span className="text-slate-700">{profilesById.get(m.user_id)?.display_name}</span>
+                  <span className="text-slate-500 tabular-nums">
                     {p.split_type === "percentage" ? `${m.percentage ?? 0}%` : p.split_type === "fixed" ? m.fixed_amount : "equal"}
                   </span>
                 </li>
@@ -112,9 +117,14 @@ export function PresetsClient({ profiles, presets }: Props) {
       </div>
 
       {editing && (
-        <div className="fixed inset-0 bg-black/30 flex items-end md:items-center justify-center p-4 z-40">
-          <form className="bg-white rounded-lg shadow-lg w-full max-w-lg p-5 space-y-3" onSubmit={submit}>
-            <h2 className="font-semibold text-lg">{editing.id ? "Edit preset" : "New preset"}</h2>
+        <div className="fixed inset-0 bg-brand-navy/40 flex items-end md:items-center justify-center p-4 z-40">
+          <form className="bg-white rounded-2xl shadow-card-hover w-full max-w-lg p-5 space-y-3" onSubmit={submit}>
+            <div className="flex items-center justify-between">
+              <h2 className="font-semibold text-lg text-brand-navy">{editing.id ? "Edit preset" : "New preset"}</h2>
+              <button type="button" onClick={() => setEditing(null)} aria-label="Close">
+                <X className="h-5 w-5 text-slate-500" />
+              </button>
+            </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="col-span-2">
                 <label className="label">Name</label>
@@ -173,7 +183,7 @@ export function PresetsClient({ profiles, presets }: Props) {
                 ))}
               </div>
             </div>
-            {err && <p className="text-sm text-red-600">{err}</p>}
+            {err && <p className="text-sm text-brand-danger">{err}</p>}
             <div className="flex justify-end gap-2 pt-2">
               <button type="button" className="btn-secondary" onClick={() => setEditing(null)}>Cancel</button>
               <button className="btn-primary" disabled={pending}>Save</button>

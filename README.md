@@ -1,14 +1,36 @@
 # TrackYourGastos
 
-A simple, private expense tracker for three users — **Alan**, **Mari Cel**, **Mari Len** — with receipt OCR, recurring expenses, settlements, and exports. Built on Next.js + Supabase, deployable free on Vercel.
+**Track. Split. Settle.** A simple, private expense tracker for three users — **Alan**, **Mari Cel**, **Mari Len** — with receipt OCR, recurring expenses, settlements, and exports. Built on Next.js + Supabase, deployable free on Vercel.
 
 ## Stack
-- **Next.js 14** (App Router) + **TypeScript** + **Tailwind CSS**
+- **Next.js 14** (App Router) + **TypeScript** + **Tailwind CSS** + **Poppins** (via `next/font`)
 - **Supabase** (Postgres, Auth, Storage, RLS)
 - **Tesseract.js** for client-side OCR (optional OCR.Space API fallback)
 - **Recharts** for dashboard charts
 - **jsPDF + xlsx** for PDF/Excel exports
+- **lucide-react** for UI icons
 - **Zod** validation, server actions for writes
+
+## Brand & assets
+
+- **Logo mark:** `public/logo-mark.svg` — wallet + green receipt with a peso symbol. Rendered inline by `src/components/ui/BrandLogo.tsx` in three variants (`sidebar`, `topbar`, `full`).
+- **Favicon:** `public/favicon.svg` — green→cyan gradient rounded square version of the mark. Wired up in `src/app/layout.tsx`.
+- **Color palette** (Tailwind `brand` namespace, defined in `tailwind.config.ts`):
+
+  | Token | Hex | Usage |
+  |---|---|---|
+  | `brand-navy` | `#0D1B2A` | Sidebar, headings, primary text |
+  | `brand-blue` | `#2563EB` | Secondary accent, "Paid" bar, paperclip |
+  | `brand-green` | `#10B981` | Primary accent, positive amounts, active nav |
+  | `brand-cyan` | `#06B6D4` | Gradient end, transit/secondary chart |
+  | `brand-purple` | `#8B5CF6` | Category badge / chart |
+  | `brand-orange` | `#F59E0B` | Dining badge / chart |
+  | `brand-pink` | `#EC4899` | Shopping badge / chart |
+  | `brand-bg` | `#F3F4F6` | App background |
+  | `brand-danger` | `#EF4444` | Errors, negative amounts, destructive buttons |
+- **Gradient:** `bg-brand-gradient` (green→cyan 135°) for primary CTAs, the mobile FAB, and active sidebar nav.
+- **Reusable primitives** under `src/components/ui/`:
+  - `BrandLogo`, `PageHeader`, `StatCard`, `Badge`, `ChartCard`, `ReceiptDropzone`, `MobileBottomNav`, plus a single `icons.ts` re-export of the lucide icons used.
 
 ## Pages
 - `/login` — email + password or magic link

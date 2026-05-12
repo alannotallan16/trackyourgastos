@@ -3,8 +3,10 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { deleteRecurring, generateFromRecurring, saveRecurring, toggleRecurringActive, type RecurringPayload } from "./actions";
-import { formatMoney } from "@/lib/format";
+import { formatMoney, formatDate } from "@/lib/format";
 import type { Category, Profile, RecurringExpense, SplitPreset } from "@/lib/types";
+import { Badge, colorForCategory } from "@/components/ui/Badge";
+import { Plus, X } from "@/components/ui/icons";
 
 interface Props {
   items: RecurringExpense[];
@@ -71,65 +73,68 @@ export function RecurringClient({ items, profiles, categories, presets }: Props)
           {upcoming.length > 0 ? `${upcoming.length} due within 14 days.` : "No upcoming recurring expenses."}
         </p>
         <button className="btn-primary text-sm" onClick={startNew}>
-          ➕ New recurring
+          <Plus className="h-4 w-4" />
+          New recurring
         </button>
       </div>
 
-      <div className="card overflow-x-auto p-0">
+      <div className="card overflow-hidden p-0">
         <table className="min-w-full text-sm">
-          <thead className="bg-slate-100">
+          <thead className="bg-slate-50">
             <tr>
-              <th className="table-cell text-left">Merchant</th>
-              <th className="table-cell text-left">Category</th>
-              <th className="table-cell text-right">Amount</th>
-              <th className="table-cell text-left">Paid by</th>
-              <th className="table-cell text-left">Frequency</th>
-              <th className="table-cell text-left">Next due</th>
-              <th className="table-cell text-left">Status</th>
+              <th className="table-cell text-left text-xs uppercase tracking-wide text-slate-600">Merchant</th>
+              <th className="table-cell text-left text-xs uppercase tracking-wide text-slate-600">Category</th>
+              <th className="table-cell text-right text-xs uppercase tracking-wide text-slate-600">Amount</th>
+              <th className="table-cell text-left text-xs uppercase tracking-wide text-slate-600">Paid by</th>
+              <th className="table-cell text-left text-xs uppercase tracking-wide text-slate-600">Frequency</th>
+              <th className="table-cell text-left text-xs uppercase tracking-wide text-slate-600">Next due</th>
+              <th className="table-cell text-left text-xs uppercase tracking-wide text-slate-600">Status</th>
               <th className="table-cell"></th>
             </tr>
           </thead>
           <tbody>
             {items.length === 0 && (
               <tr>
-                <td className="table-cell text-slate-500 py-4 text-center" colSpan={8}>
+                <td className="table-cell text-slate-500 py-6 text-center" colSpan={8}>
                   No recurring expenses yet.
                 </td>
               </tr>
             )}
-            {items.map((r) => (
+            {items.map((r) => {
+              const cat = r.category_id ? catsById.get(r.category_id) : null;
+              return (
               <tr key={r.id} className="hover:bg-slate-50">
-                <td className="table-cell">{r.merchant}</td>
-                <td className="table-cell">{r.category_id ? catsById.get(r.category_id)?.name : "—"}</td>
-                <td className="table-cell text-right tabular-nums">{formatMoney(Number(r.amount), r.currency)}</td>
-                <td className="table-cell">{profilesById.get(r.paid_by_user_id)?.display_name ?? "—"}</td>
-                <td className="table-cell capitalize">{r.frequency}</td>
-                <td className="table-cell">{r.next_due_date}</td>
+                <td className="table-cell font-medium">{r.merchant}</td>
                 <td className="table-cell">
-                  <span className={`chip ${r.active ? "bg-emerald-100 text-emerald-700" : "bg-slate-200"}`}>
-                    {r.active ? "active" : "inactive"}
-                  </span>
+                  {cat ? <Badge color={colorForCategory(cat.name)}>{cat.name}</Badge> : <span className="text-slate-400">—</span>}
+                </td>
+                <td className="table-cell text-right tabular-nums font-medium">{formatMoney(Number(r.amount), r.currency)}</td>
+                <td className="table-cell">{profilesById.get(r.paid_by_user_id)?.display_name ?? "—"}</td>
+                <td className="table-cell capitalize text-slate-600">{r.frequency}</td>
+                <td className="table-cell">{formatDate(r.next_due_date)}</td>
+                <td className="table-cell">
+                  <Badge color={r.active ? "green" : "gray"}>{r.active ? "active" : "paused"}</Badge>
                 </td>
                 <td className="table-cell">
-                  <div className="flex gap-2 text-xs">
+                  <div className="flex flex-wrap gap-3 text-xs">
                     <button
-                      className="text-brand underline"
+                      className="text-brand-green font-medium hover:underline"
                       onClick={() => startTransition(() => generateFromRecurring(r.id))}
                       disabled={pending}
                     >
                       Add now
                     </button>
-                    <button className="text-slate-600 underline" onClick={() => setEditing(r)}>
+                    <button className="text-slate-600 hover:underline" onClick={() => setEditing(r)}>
                       Edit
                     </button>
                     <button
-                      className="text-slate-600 underline"
+                      className="text-slate-600 hover:underline"
                       onClick={() => startTransition(() => toggleRecurringActive(r.id, !r.active))}
                     >
                       {r.active ? "Pause" : "Resume"}
                     </button>
                     <button
-                      className="text-red-600 underline"
+                      className="text-brand-danger hover:underline"
                       onClick={() => {
                         if (confirm("Delete this recurring template?")) {
                           startTransition(() => deleteRecurring(r.id));
@@ -141,15 +146,21 @@ export function RecurringClient({ items, profiles, categories, presets }: Props)
                   </div>
                 </td>
               </tr>
-            ))}
+            );
+            })}
           </tbody>
         </table>
       </div>
 
       {editing && (
-        <div className="fixed inset-0 bg-black/30 flex items-end md:items-center justify-center p-4 z-40">
-          <form className="bg-white rounded-lg shadow-lg w-full max-w-lg p-5 space-y-3" onSubmit={submit}>
-            <h2 className="font-semibold text-lg">{editing.id ? "Edit recurring" : "New recurring"}</h2>
+        <div className="fixed inset-0 bg-brand-navy/40 flex items-end md:items-center justify-center p-4 z-40">
+          <form className="bg-white rounded-2xl shadow-card-hover w-full max-w-lg p-5 space-y-3" onSubmit={submit}>
+            <div className="flex items-center justify-between">
+              <h2 className="font-semibold text-lg text-brand-navy">{editing.id ? "Edit recurring" : "New recurring"}</h2>
+              <button type="button" onClick={() => setEditing(null)} aria-label="Close">
+                <X className="h-5 w-5 text-slate-500" />
+              </button>
+            </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="col-span-2">
                 <label className="label">Merchant</label>
@@ -210,7 +221,7 @@ export function RecurringClient({ items, profiles, categories, presets }: Props)
                 Active
               </label>
             </div>
-            {err && <p className="text-sm text-red-600">{err}</p>}
+            {err && <p className="text-sm text-brand-danger">{err}</p>}
             <div className="flex justify-end gap-2 pt-2">
               <button type="button" className="btn-secondary" onClick={() => setEditing(null)}>Cancel</button>
               <button className="btn-primary" disabled={pending}>{pending ? "Saving…" : "Save"}</button>

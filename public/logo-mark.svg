@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="TrackYourGastos">
+  <!-- Wallet body (navy) -->
+  <rect x="6" y="22" width="52" height="32" rx="6" fill="#0D1B2A"/>
+  <!-- Wallet flap accent -->
+  <rect x="6" y="22" width="52" height="8" fill="#FFFFFF" fill-opacity="0.08"/>
+  <!-- Card slot accent (green dot) -->
+  <circle cx="48" cy="38" r="3.5" fill="#10B981"/>
+  <!-- Receipt sticking out (green) -->
+  <path d="M18 6 h22 a3 3 0 0 1 3 3 v23 a1.2 1.2 0 0 1 -2 0.9 l-5 -4.2 l-3.3 3.3 a1.2 1.2 0 0 1 -1.7 0 l-2.7 -2.7 l-5 4.6 a1.2 1.2 0 0 1 -2 -0.9 V9 a3 3 0 0 1 3 -3 z" fill="#10B981"/>
+  <!-- Peso symbol on receipt -->
+  <text x="29" y="22" text-anchor="middle" font-family="Poppins, 'Helvetica Neue', Arial, sans-serif" font-weight="700" font-size="16" fill="#FFFFFF">₱</text>
+</svg>

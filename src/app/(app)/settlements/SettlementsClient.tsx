@@ -6,6 +6,8 @@ import { deleteSettlement, saveSettlement, type SettlementPayload } from "./acti
 import { formatDate, formatMoney } from "@/lib/format";
 import type { Profile, Settlement } from "@/lib/types";
 import type { DebtSuggestion, UserBalance } from "@/lib/balances";
+import { StatCard } from "@/components/ui/StatCard";
+import { ArrowRight, Plus, Users, Wallet, X, Trash2 } from "@/components/ui/icons";
 
 interface Props {
   profiles: Profile[];
@@ -13,6 +15,8 @@ interface Props {
   balances: UserBalance[];
   suggestions: DebtSuggestion[];
 }
+
+const PERSON_ICON_BG = ["green", "blue", "purple"] as const;
 
 export function SettlementsClient({ profiles, settlements, balances, suggestions }: Props) {
   const router = useRouter();
@@ -55,40 +59,46 @@ export function SettlementsClient({ profiles, settlements, balances, suggestions
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-        {profiles.map((p) => {
+        {profiles.map((p, i) => {
           const b = balances.find((x) => x.user_id === p.id);
+          const net = b?.net ?? 0;
           return (
-            <div key={p.id} className="card">
-              <p className="text-xs uppercase text-slate-500">{p.display_name}</p>
-              <p className={`text-2xl font-semibold tabular-nums ${b && b.net > 0 ? "text-emerald-600" : b && b.net < 0 ? "text-red-600" : ""}`}>
-                {formatMoney(b?.net ?? 0)}
-              </p>
-              <p className="text-xs text-slate-500">Paid {formatMoney(b?.paid ?? 0)} · Share {formatMoney(b?.owed ?? 0)}</p>
-            </div>
+            <StatCard
+              key={p.id}
+              label={`${p.display_name} net`}
+              value={formatMoney(net)}
+              hint={`Paid ${formatMoney(b?.paid ?? 0)} · Share ${formatMoney(b?.owed ?? 0)}`}
+              tone={net > 0 ? "positive" : net < 0 ? "negative" : "default"}
+              icon={i === 0 ? Wallet : Users}
+              iconBg={PERSON_ICON_BG[i % PERSON_ICON_BG.length]}
+            />
           );
         })}
       </div>
 
       <div className="card">
-        <div className="flex items-center justify-between mb-2">
-          <h2 className="font-medium">Suggested settlements</h2>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-sm font-semibold text-brand-navy">Suggested settlements</h2>
           <button className="btn-primary text-sm" onClick={() => openNew()}>
-            ➕ Record payment
+            <Plus className="h-4 w-4" />
+            Record payment
           </button>
         </div>
         {suggestions.length === 0 ? (
-          <p className="text-sm text-slate-500">All settled. 🎉</p>
+          <p className="text-sm text-slate-500">All settled.</p>
         ) : (
-          <ul className="divide-y divide-slate-100">
+          <ul className="space-y-2">
             {suggestions.map((s, i) => (
-              <li key={i} className="flex items-center justify-between py-2">
-                <span>
-                  <strong>{profilesById.get(s.from_user_id)?.display_name}</strong> → {profilesById.get(s.to_user_id)?.display_name}
+              <li key={i} className="flex items-center justify-between rounded-xl border border-slate-100 px-3 py-2">
+                <span className="flex items-center gap-2 min-w-0">
+                  <span className="font-medium text-brand-navy">{profilesById.get(s.from_user_id)?.display_name}</span>
+                  <ArrowRight className="h-4 w-4 text-slate-400" />
+                  <span className="font-medium text-brand-navy">{profilesById.get(s.to_user_id)?.display_name}</span>
                 </span>
                 <div className="flex items-center gap-3">
-                  <span className="tabular-nums font-medium">{formatMoney(s.amount)}</span>
+                  <span className="tabular-nums font-semibold text-brand-danger">{formatMoney(s.amount)}</span>
                   <button
-                    className="btn-secondary text-xs"
+                    className="btn-secondary text-xs !px-3 !py-1.5"
                     onClick={() => openNew({ from_user_id: s.from_user_id, to_user_id: s.to_user_id, amount: s.amount })}
                   >
                     Mark paid
@@ -100,41 +110,45 @@ export function SettlementsClient({ profiles, settlements, balances, suggestions
         )}
       </div>
 
-      <div className="card overflow-x-auto p-0">
+      <div className="card overflow-hidden p-0">
+        <div className="px-5 py-3 border-b border-slate-100">
+          <h2 className="text-sm font-semibold text-brand-navy">Settlement history</h2>
+        </div>
         <table className="min-w-full text-sm">
-          <thead className="bg-slate-100">
+          <thead className="bg-slate-50">
             <tr>
-              <th className="table-cell text-left">Date</th>
-              <th className="table-cell text-left">From</th>
-              <th className="table-cell text-left">To</th>
-              <th className="table-cell text-right">Amount</th>
-              <th className="table-cell text-left">Notes</th>
+              <th className="table-cell text-left text-xs uppercase tracking-wide text-slate-600">Date</th>
+              <th className="table-cell text-left text-xs uppercase tracking-wide text-slate-600">From</th>
+              <th className="table-cell text-left text-xs uppercase tracking-wide text-slate-600">To</th>
+              <th className="table-cell text-right text-xs uppercase tracking-wide text-slate-600">Amount</th>
+              <th className="table-cell text-left text-xs uppercase tracking-wide text-slate-600">Notes</th>
               <th className="table-cell"></th>
             </tr>
           </thead>
           <tbody>
             {settlements.length === 0 && (
               <tr>
-                <td className="table-cell text-center text-slate-500 py-4" colSpan={6}>
+                <td className="table-cell text-center text-slate-500 py-6" colSpan={6}>
                   No settlements recorded yet.
                 </td>
               </tr>
             )}
             {settlements.map((s) => (
-              <tr key={s.id}>
+              <tr key={s.id} className="hover:bg-slate-50">
                 <td className="table-cell">{formatDate(s.settled_on)}</td>
                 <td className="table-cell">{profilesById.get(s.from_user_id)?.display_name}</td>
                 <td className="table-cell">{profilesById.get(s.to_user_id)?.display_name}</td>
-                <td className="table-cell text-right tabular-nums">{formatMoney(Number(s.amount), s.currency)}</td>
+                <td className="table-cell text-right tabular-nums font-medium">{formatMoney(Number(s.amount), s.currency)}</td>
                 <td className="table-cell text-slate-600">{s.notes ?? ""}</td>
                 <td className="table-cell text-right">
                   <button
-                    className="text-red-600 text-xs underline"
+                    className="text-brand-danger hover:underline text-xs inline-flex items-center gap-1"
                     onClick={() => {
                       if (confirm("Delete this settlement?")) start(() => deleteSettlement(s.id).then(() => router.refresh()));
                     }}
                     disabled={pending}
                   >
+                    <Trash2 className="h-3.5 w-3.5" />
                     Delete
                   </button>
                 </td>
@@ -145,9 +159,14 @@ export function SettlementsClient({ profiles, settlements, balances, suggestions
       </div>
 
       {editing && (
-        <div className="fixed inset-0 bg-black/30 flex items-end md:items-center justify-center p-4 z-40">
-          <form className="bg-white rounded-lg shadow-lg w-full max-w-md p-5 space-y-3" onSubmit={submit}>
-            <h2 className="font-semibold text-lg">Record settlement</h2>
+        <div className="fixed inset-0 bg-brand-navy/40 flex items-end md:items-center justify-center p-4 z-40">
+          <form className="bg-white rounded-2xl shadow-card-hover w-full max-w-md p-5 space-y-3" onSubmit={submit}>
+            <div className="flex items-center justify-between">
+              <h2 className="font-semibold text-lg text-brand-navy">Record settlement</h2>
+              <button type="button" onClick={() => setEditing(null)} aria-label="Close">
+                <X className="h-5 w-5 text-slate-500" />
+              </button>
+            </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="label">From</label>
@@ -178,7 +197,7 @@ export function SettlementsClient({ profiles, settlements, balances, suggestions
                 <textarea className="input" value={editing.notes ?? ""} onChange={(e) => setEditing({ ...editing, notes: e.target.value })} />
               </div>
             </div>
-            {err && <p className="text-sm text-red-600">{err}</p>}
+            {err && <p className="text-sm text-brand-danger">{err}</p>}
             <div className="flex justify-end gap-2 pt-2">
               <button type="button" className="btn-secondary" onClick={() => setEditing(null)}>Cancel</button>
               <button className="btn-primary" disabled={pending}>Save</button>

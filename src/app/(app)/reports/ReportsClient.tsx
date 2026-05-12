@@ -4,6 +4,8 @@ import { useMemo, useState } from "react";
 import type { Category, Expense, ExpenseSplit, Profile, Settlement } from "@/lib/types";
 import type { UserBalance } from "@/lib/balances";
 import { formatMoney } from "@/lib/format";
+import { StatCard } from "@/components/ui/StatCard";
+import { FileText, FileSpreadsheet, FileDown, TrendingUp, Wallet, ArrowLeftRight } from "@/components/ui/icons";
 
 interface Props {
   profiles: Profile[];
@@ -134,8 +136,35 @@ export function ReportsClient({ profiles, expenses, splits, settlements, categor
     doc.save("expenses.pdf");
   }
 
+  const totalFiltered = filtered.reduce((a, b) => a + Number(b.total_amount), 0);
+  const totalSettlements = settlements.reduce((a, b) => a + Number(b.amount), 0);
+
   return (
     <div className="space-y-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <StatCard
+          label="Filtered expenses"
+          value={formatMoney(totalFiltered)}
+          hint={`${filtered.length} row${filtered.length === 1 ? "" : "s"}`}
+          icon={TrendingUp}
+          iconBg="green"
+        />
+        <StatCard
+          label="People"
+          value={String(profiles.length)}
+          hint="Household members"
+          icon={Wallet}
+          iconBg="blue"
+        />
+        <StatCard
+          label="Settlements"
+          value={formatMoney(totalSettlements)}
+          hint={`${settlements.length} recorded`}
+          icon={ArrowLeftRight}
+          iconBg="purple"
+        />
+      </div>
+
       <div className="card grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
         <div>
           <label className="label">From</label>
@@ -145,31 +174,33 @@ export function ReportsClient({ profiles, expenses, splits, settlements, categor
           <label className="label">To</label>
           <input type="date" className="input" value={to} onChange={(e) => setTo(e.target.value)} />
         </div>
-        <label className="flex items-center gap-2 text-sm">
-          <input type="checkbox" checked={includeSettlements} onChange={(e) => setIncludeSettlements(e.target.checked)} />
+        <label className="flex items-center gap-2 text-sm text-slate-700">
+          <input type="checkbox" checked={includeSettlements} onChange={(e) => setIncludeSettlements(e.target.checked)} className="h-4 w-4 rounded text-brand-green focus:ring-brand-green" />
           Include settlements
         </label>
         <p className="text-sm text-slate-500">{filtered.length} rows</p>
       </div>
 
-      <div className="card">
-        <h2 className="font-medium mb-2">Balances summary</h2>
+      <div className="card overflow-hidden p-0">
+        <div className="px-5 py-3 border-b border-slate-100">
+          <h2 className="text-sm font-semibold text-brand-navy">Balances summary</h2>
+        </div>
         <table className="min-w-full text-sm">
           <thead className="bg-slate-50">
             <tr>
-              <th className="table-cell text-left">Member</th>
-              <th className="table-cell text-right">Paid</th>
-              <th className="table-cell text-right">Share</th>
-              <th className="table-cell text-right">Net</th>
+              <th className="table-cell text-left text-xs uppercase tracking-wide text-slate-600">Member</th>
+              <th className="table-cell text-right text-xs uppercase tracking-wide text-slate-600">Paid</th>
+              <th className="table-cell text-right text-xs uppercase tracking-wide text-slate-600">Share</th>
+              <th className="table-cell text-right text-xs uppercase tracking-wide text-slate-600">Net</th>
             </tr>
           </thead>
           <tbody>
             {balances.map((b) => (
-              <tr key={b.user_id}>
-                <td className="table-cell">{profilesById.get(b.user_id)?.display_name}</td>
+              <tr key={b.user_id} className="hover:bg-slate-50">
+                <td className="table-cell font-medium">{profilesById.get(b.user_id)?.display_name}</td>
                 <td className="table-cell text-right tabular-nums">{formatMoney(b.paid)}</td>
                 <td className="table-cell text-right tabular-nums">{formatMoney(b.owed)}</td>
-                <td className={`table-cell text-right tabular-nums ${b.net > 0 ? "text-emerald-600" : b.net < 0 ? "text-red-600" : ""}`}>
+                <td className={`table-cell text-right tabular-nums font-semibold ${b.net > 0 ? "text-brand-green" : b.net < 0 ? "text-brand-danger" : ""}`}>
                   {formatMoney(b.net)}
                 </td>
               </tr>
@@ -178,10 +209,22 @@ export function ReportsClient({ profiles, expenses, splits, settlements, categor
         </table>
       </div>
 
-      <div className="card flex flex-wrap gap-2">
-        <button className="btn-primary text-sm" onClick={downloadCSV}>Export CSV</button>
-        <button className="btn-primary text-sm" onClick={downloadExcel}>Export Excel</button>
-        <button className="btn-primary text-sm" onClick={downloadPDF}>Export PDF</button>
+      <div className="card">
+        <h2 className="text-sm font-semibold text-brand-navy mb-3">Export</h2>
+        <div className="flex flex-wrap gap-2">
+          <button className="btn-secondary text-sm" onClick={downloadCSV}>
+            <FileText className="h-4 w-4 text-brand-blue" />
+            CSV
+          </button>
+          <button className="btn-secondary text-sm" onClick={downloadExcel}>
+            <FileSpreadsheet className="h-4 w-4 text-brand-green" />
+            Excel
+          </button>
+          <button className="btn-secondary text-sm" onClick={downloadPDF}>
+            <FileDown className="h-4 w-4 text-brand-danger" />
+            PDF
+          </button>
+        </div>
       </div>
     </div>
   );

@@ -1,15 +1,18 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { getCategories, getExpenses, getProfiles, getSettlementDetail } from "@/lib/data";
+import { createClient } from "@/lib/supabase/server";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { StatCard } from "@/components/ui/StatCard";
 import { Badge, colorForCategory } from "@/components/ui/Badge";
-import { ChevronLeft, TrendingUp, Wallet, Users } from "@/components/ui/icons";
+import { ChevronLeft, Paperclip, TrendingUp, Wallet, Users } from "@/components/ui/icons";
 import { formatDate, formatMoney } from "@/lib/format";
 import { SettlementDetailActions } from "./SettlementDetailActions";
 import { SettlementStatusBadge } from "../SettlementsClient";
 
 export const dynamic = "force-dynamic";
+
+const RECEIPTS_BUCKET = process.env.NEXT_PUBLIC_SUPABASE_RECEIPTS_BUCKET || "receipts";
 
 export default async function SettlementDetailPage({ params }: { params: { id: string } }) {
   const [{ settlement, items, payments }, profiles, expenses, categories] = await Promise.all([
@@ -19,6 +22,20 @@ export default async function SettlementDetailPage({ params }: { params: { id: s
     getCategories()
   ]);
   if (!settlement) notFound();
+
+  // Sign attachment URLs server-side for any payments that have proof-of-payment files.
+  const supabase = createClient();
+  const attachmentUrls = new Map<string, string>();
+  await Promise.all(
+    payments
+      .filter((p) => p.attachment_path)
+      .map(async (p) => {
+        const { data } = await supabase.storage
+          .from(RECEIPTS_BUCKET)
+          .createSignedUrl(p.attachment_path as string, 60 * 30);
+        if (data?.signedUrl) attachmentUrls.set(p.id, data.signedUrl);
+      })
+  );
 
   const profilesById = new Map(profiles.map((p) => [p.id, p]));
   const expensesById = new Map(expenses.map((e) => [e.id, e]));
@@ -145,20 +162,39 @@ export default async function SettlementDetailPage({ params }: { params: { id: s
                 <th className="table-cell text-left text-xs uppercase tracking-wide text-slate-600">Method</th>
                 <th className="table-cell text-left text-xs uppercase tracking-wide text-slate-600">Reference</th>
                 <th className="table-cell text-left text-xs uppercase tracking-wide text-slate-600">Notes</th>
+                <th className="table-cell text-left text-xs uppercase tracking-wide text-slate-600">Proof</th>
               </tr>
             </thead>
             <tbody>
-              {payments.map((p) => (
-                <tr key={p.id} className="hover:bg-slate-50">
-                  <td className="table-cell whitespace-nowrap text-slate-600">{formatDate(p.payment_date)}</td>
-                  <td className="table-cell text-right tabular-nums font-medium">
-                    {formatMoney(Number(p.amount), p.currency)}
-                  </td>
-                  <td className="table-cell">{p.payment_method ?? "—"}</td>
-                  <td className="table-cell text-slate-600">{p.reference_number ?? "—"}</td>
-                  <td className="table-cell text-slate-600">{p.notes ?? ""}</td>
-                </tr>
-              ))}
+              {payments.map((p) => {
+                const proofUrl = attachmentUrls.get(p.id);
+                return (
+                  <tr key={p.id} className="hover:bg-slate-50">
+                    <td className="table-cell whitespace-nowrap text-slate-600">{formatDate(p.payment_date)}</td>
+                    <td className="table-cell text-right tabular-nums font-medium">
+                      {formatMoney(Number(p.amount), p.currency)}
+                    </td>
+                    <td className="table-cell">{p.payment_method ?? "—"}</td>
+                    <td className="table-cell text-slate-600">{p.reference_number ?? "—"}</td>
+                    <td className="table-cell text-slate-600">{p.notes ?? ""}</td>
+                    <td className="table-cell">
+                      {proofUrl ? (
+                        <a
+                          href={proofUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-1 text-brand-green hover:underline text-xs font-medium"
+                        >
+                          <Paperclip className="h-3.5 w-3.5" />
+                          View
+                        </a>
+                      ) : (
+                        <span className="text-slate-300">—</span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         )}

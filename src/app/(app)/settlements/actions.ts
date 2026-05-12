@@ -120,6 +120,7 @@ const PaymentSchema = z.object({
   payment_method: z.string().nullable().optional(),
   notes: z.string().nullable().optional(),
   reference_number: z.string().nullable().optional(),
+  attachment_path: z.string().nullable().optional(),
   allow_overpay: z.boolean().optional()
 });
 
@@ -157,6 +158,7 @@ export async function recordPayment(payload: RecordPaymentPayload) {
     payment_method: parsed.payment_method ?? null,
     notes: parsed.notes ?? null,
     reference_number: parsed.reference_number ?? null,
+    attachment_path: parsed.attachment_path ?? null,
     created_by: user.id
   });
   if (payErr) throw payErr;

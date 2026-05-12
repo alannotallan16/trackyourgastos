@@ -14,6 +14,29 @@ interface Props {
   categories: Category[];
 }
 
+type ExpenseStatus = "unpaid" | "in_settlement" | "partially_settled" | "settled";
+
+function aggregateStatus(splits: ExpenseSplit[]): ExpenseStatus {
+  if (splits.length === 0) return "unpaid";
+  if (splits.some((s) => s.settlement_status === "in_settlement")) return "in_settlement";
+  const allSettled = splits.every((s) => s.settlement_status === "settled");
+  if (allSettled) return "settled";
+  const someSettled = splits.some((s) => s.settlement_status === "settled");
+  if (someSettled) return "partially_settled";
+  return "unpaid";
+}
+
+function StatusBadge({ status }: { status: ExpenseStatus }) {
+  const map = {
+    unpaid: { color: "gray", label: "Unpaid" },
+    in_settlement: { color: "orange", label: "In settlement" },
+    partially_settled: { color: "blue", label: "Partially settled" },
+    settled: { color: "green", label: "Settled" }
+  } as const;
+  const cfg = map[status];
+  return <Badge color={cfg.color as any}>{cfg.label}</Badge>;
+}
+
 type SortKey = "date" | "paid_by" | "merchant" | "category" | "total" | `share:${string}`;
 type SortDir = "asc" | "desc";
 type PageSize = 25 | 50 | 100 | "all";
@@ -176,6 +199,7 @@ export function ExpenseTable({ expenses, splits, profiles, categories }: Props) 
               {sortableHeader("category", "Category")}
               {sortableHeader("total", "Total", "right")}
               <th className="table-cell text-left text-xs uppercase tracking-wide text-slate-600">Cur</th>
+              <th className="table-cell text-left text-xs uppercase tracking-wide text-slate-600">Status</th>
               {profiles.map((p) => (
                 <th key={p.id} className="table-cell text-right">
                   <button
@@ -196,7 +220,7 @@ export function ExpenseTable({ expenses, splits, profiles, categories }: Props) 
           <tbody>
             {visible.length === 0 && (
               <tr>
-                <td className="table-cell" colSpan={6 + profiles.length + 1}>
+                <td className="table-cell" colSpan={7 + profiles.length + 1}>
                   <p className="text-slate-500 text-center py-6">No expenses match these filters.</p>
                 </td>
               </tr>
@@ -218,6 +242,7 @@ export function ExpenseTable({ expenses, splits, profiles, categories }: Props) 
                   </td>
                   <td className="table-cell text-right tabular-nums font-medium">{formatMoney(Number(e.total_amount), e.currency)}</td>
                   <td className="table-cell text-slate-500 text-xs">{e.currency}</td>
+                  <td className="table-cell"><StatusBadge status={aggregateStatus(sp)} /></td>
                   {profiles.map((p) => {
                     const s = sp.find((x) => x.user_id === p.id);
                     return (
@@ -239,7 +264,7 @@ export function ExpenseTable({ expenses, splits, profiles, categories }: Props) 
                 {filtered.length} expense(s)
               </td>
               <td className="table-cell text-right tabular-nums">{formatMoney(totalAmount)}</td>
-              <td className="table-cell" colSpan={1 + profiles.length + 1}></td>
+              <td className="table-cell" colSpan={2 + profiles.length + 1}></td>
             </tr>
           </tfoot>
         </table>
@@ -269,6 +294,7 @@ export function ExpenseTable({ expenses, splits, profiles, categories }: Props) 
                       <span>·</span>
                       <span>Paid by {profilesById.get(e.paid_by_user_id)?.display_name ?? "—"}</span>
                       {cat && <Badge color={colorForCategory(cat.name)} className="ml-1">{cat.name}</Badge>}
+                      <StatusBadge status={aggregateStatus(sp)} />
                     </div>
                     <div className="mt-2 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-slate-500">
                       {profiles.map((p) => {

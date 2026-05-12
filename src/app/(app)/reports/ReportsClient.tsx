@@ -69,14 +69,18 @@ export function ReportsClient({ profiles, expenses, splits, settlements, categor
     if (includeSettlements && settlements.length) {
       lines.push("");
       lines.push("Settlements");
-      lines.push(["Date", "From", "To", "Amount", "Currency", "Notes"].join(","));
+      lines.push(["Created", "Ref", "From", "To", "Total", "Paid", "Remaining", "Status", "Currency", "Notes"].join(","));
       for (const s of settlements) {
         lines.push(
           [
-            s.settled_on,
+            s.created_at.slice(0, 10),
+            s.settlement_number,
             profilesById.get(s.from_user_id)?.display_name ?? "",
             profilesById.get(s.to_user_id)?.display_name ?? "",
-            String(s.amount),
+            String(s.total_amount),
+            String(s.amount_paid),
+            String(s.remaining_amount),
+            s.status,
             s.currency,
             csvField(s.notes ?? "")
           ].join(",")
@@ -94,10 +98,14 @@ export function ReportsClient({ profiles, expenses, splits, settlements, categor
     if (includeSettlements && settlements.length) {
       const ws2 = XLSX.utils.json_to_sheet(
         settlements.map((s) => ({
-          Date: s.settled_on,
+          Created: s.created_at.slice(0, 10),
+          Ref: s.settlement_number,
           From: profilesById.get(s.from_user_id)?.display_name ?? "",
           To: profilesById.get(s.to_user_id)?.display_name ?? "",
-          Amount: Number(s.amount),
+          Total: Number(s.total_amount),
+          Paid: Number(s.amount_paid),
+          Remaining: Number(s.remaining_amount),
+          Status: s.status,
           Currency: s.currency,
           Notes: s.notes ?? ""
         }))
@@ -122,13 +130,16 @@ export function ReportsClient({ profiles, expenses, splits, settlements, categor
     if (includeSettlements && settlements.length) {
       doc.addPage();
       doc.text("Settlements", 14, 16);
-      const sHead = [["Date", "From", "To", "Amount", "Currency", "Notes"]];
+      const sHead = [["Created", "Ref", "From", "To", "Total", "Paid", "Remaining", "Status", "Notes"]];
       const sBody = settlements.map((s) => [
-        s.settled_on,
+        s.created_at.slice(0, 10),
+        s.settlement_number,
         profilesById.get(s.from_user_id)?.display_name ?? "",
         profilesById.get(s.to_user_id)?.display_name ?? "",
-        Number(s.amount).toFixed(2),
-        s.currency,
+        Number(s.total_amount).toFixed(2),
+        Number(s.amount_paid).toFixed(2),
+        Number(s.remaining_amount).toFixed(2),
+        s.status,
         s.notes ?? ""
       ]);
       autoTable(doc, { head: sHead, body: sBody, startY: 22, styles: { fontSize: 8 } });
@@ -137,7 +148,7 @@ export function ReportsClient({ profiles, expenses, splits, settlements, categor
   }
 
   const totalFiltered = filtered.reduce((a, b) => a + Number(b.total_amount), 0);
-  const totalSettlements = settlements.reduce((a, b) => a + Number(b.amount), 0);
+  const totalSettlements = settlements.reduce((a, b) => a + Number(b.total_amount), 0);
 
   return (
     <div className="space-y-4">

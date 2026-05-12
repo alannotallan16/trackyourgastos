@@ -1,16 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
-import { createSettlement } from "./actions";
+import { useMemo, useState } from "react";
 import { formatDate, formatMoney } from "@/lib/format";
 import type { Category, Expense, ExpenseSplit, Profile, Settlement } from "@/lib/types";
 import type { DebtSuggestion, UserBalance } from "@/lib/balances";
 import { findUnpaidShares } from "@/lib/balances";
 import { StatCard } from "@/components/ui/StatCard";
-import { Badge, colorForCategory } from "@/components/ui/Badge";
-import { ArrowRight, Plus, Users, Wallet, X } from "@/components/ui/icons";
+import { Badge } from "@/components/ui/Badge";
+import { ArrowRight, Plus, Users, Wallet } from "@/components/ui/icons";
+import { CreateSettlementModal } from "./CreateSettlementModal";
 
 interface Props {
   profiles: Profile[];
@@ -24,11 +23,10 @@ interface Props {
 
 const PERSON_ICON_BG = ["green", "blue", "purple"] as const;
 
-interface DraftState {
-  from_user_id: string;
-  to_user_id: string;
-  selected: Set<string>;
-  notes: string;
+interface DraftSeed {
+  from_user_id?: string;
+  to_user_id?: string;
+  suggested_amount?: number;
 }
 
 export function SettlementsClient({
@@ -40,88 +38,11 @@ export function SettlementsClient({
   balances,
   suggestions
 }: Props) {
-  const router = useRouter();
   const profilesById = useMemo(() => new Map(profiles.map((p) => [p.id, p])), [profiles]);
-  const categoriesById = useMemo(() => new Map(categories.map((c) => [c.id, c])), [categories]);
-
-  const [draft, setDraft] = useState<DraftState | null>(null);
-  const [pending, start] = useTransition();
-  const [err, setErr] = useState<string | null>(null);
+  const [draftSeed, setDraftSeed] = useState<DraftSeed | null>(null);
 
   const open = settlements.filter((s) => s.status === "open" || s.status === "partially_paid");
   const history = settlements.filter((s) => s.status === "paid" || s.status === "cancelled");
-
-  const candidateShares = useMemo(() => {
-    if (!draft) return [];
-    return findUnpaidShares(expenses, splits, draft.from_user_id, draft.to_user_id);
-  }, [draft, expenses, splits]);
-
-  const draftTotal = useMemo(() => {
-    if (!draft) return 0;
-    return candidateShares.reduce(
-      (sum, s) => (draft.selected.has(s.split.id) ? sum + Number(s.split.calculated_amount) : sum),
-      0
-    );
-  }, [candidateShares, draft]);
-
-  function openCreate(seed?: { from_user_id?: string; to_user_id?: string }) {
-    const from = seed?.from_user_id ?? profiles[0]?.id ?? "";
-    const to = seed?.to_user_id ?? profiles.find((p) => p.id !== from)?.id ?? "";
-    setErr(null);
-    setDraft({
-      from_user_id: from,
-      to_user_id: to,
-      selected: new Set(),
-      notes: ""
-    });
-  }
-
-  // Pre-select all candidates when from/to changes
-  function onPickDirection(field: "from_user_id" | "to_user_id", value: string) {
-    setDraft((d) => {
-      if (!d) return d;
-      const next = { ...d, [field]: value, selected: new Set<string>() };
-      const matches = findUnpaidShares(expenses, splits, next.from_user_id, next.to_user_id);
-      for (const m of matches) next.selected.add(m.split.id);
-      return next;
-    });
-  }
-
-  function toggleSelect(id: string) {
-    setDraft((d) => {
-      if (!d) return d;
-      const next = new Set(d.selected);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return { ...d, selected: next };
-    });
-  }
-
-  function submitDraft(e: React.FormEvent) {
-    e.preventDefault();
-    if (!draft) return;
-    setErr(null);
-    const ids = Array.from(draft.selected);
-    if (ids.length === 0) {
-      setErr("Pick at least one expense share to include.");
-      return;
-    }
-    start(async () => {
-      try {
-        const { id } = await createSettlement({
-          from_user_id: draft.from_user_id,
-          to_user_id: draft.to_user_id,
-          currency: "PHP",
-          split_ids: ids,
-          notes: draft.notes || null
-        });
-        setDraft(null);
-        router.push(`/settlements/${id}`);
-      } catch (e: any) {
-        setErr(e?.message ?? "Failed to create settlement.");
-      }
-    });
-  }
 
   return (
     <div className="space-y-4">
@@ -146,7 +67,7 @@ export function SettlementsClient({
       <div className="card">
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-sm font-semibold text-brand-navy">Suggested settlements</h2>
-          <button className="btn-primary text-sm" onClick={() => openCreate()}>
+          <button className="btn-primary text-sm" onClick={() => setDraftSeed({})}>
             <Plus className="h-4 w-4" />
             Create settlement
           </button>
@@ -171,7 +92,13 @@ export function SettlementsClient({
                     </div>
                     <button
                       className="btn-secondary text-xs !px-3 !py-1.5"
-                      onClick={() => openCreate({ from_user_id: s.from_user_id, to_user_id: s.to_user_id })}
+                      onClick={() =>
+                        setDraftSeed({
+                          from_user_id: s.from_user_id,
+                          to_user_id: s.to_user_id,
+                          suggested_amount: s.amount
+                        })
+                      }
                     >
                       Create settlement
                     </button>
@@ -263,144 +190,17 @@ export function SettlementsClient({
         )}
       </div>
 
-      {/* Create settlement modal */}
-      {draft && (
-        <div className="fixed inset-0 bg-brand-navy/40 flex items-end md:items-center justify-center p-3 z-40">
-          <form
-            className="bg-white rounded-2xl shadow-card-hover w-full max-w-2xl max-h-[90vh] flex flex-col"
-            onSubmit={submitDraft}
-          >
-            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
-              <h2 className="font-semibold text-lg text-brand-navy">Create settlement</h2>
-              <button type="button" onClick={() => setDraft(null)} aria-label="Close">
-                <X className="h-5 w-5 text-slate-500" />
-              </button>
-            </div>
-
-            <div className="px-5 py-4 space-y-4 overflow-y-auto">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="label">From (owes)</label>
-                  <select
-                    className="input"
-                    value={draft.from_user_id}
-                    onChange={(e) => onPickDirection("from_user_id", e.target.value)}
-                  >
-                    {profiles.map((p) => (
-                      <option key={p.id} value={p.id}>{p.display_name}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="label">To (paid)</label>
-                  <select
-                    className="input"
-                    value={draft.to_user_id}
-                    onChange={(e) => onPickDirection("to_user_id", e.target.value)}
-                  >
-                    {profiles.map((p) => (
-                      <option key={p.id} value={p.id}>{p.display_name}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <p className="label mb-2">Unpaid expense shares</p>
-                {candidateShares.length === 0 ? (
-                  <p className="text-sm text-slate-500 rounded-xl border border-dashed border-slate-200 px-3 py-6 text-center">
-                    No unpaid shares between these two people right now.
-                  </p>
-                ) : (
-                  <div className="rounded-xl border border-slate-200 overflow-hidden">
-                    <table className="min-w-full text-sm">
-                      <thead className="bg-slate-50">
-                        <tr>
-                          <th className="table-cell text-left w-8">
-                            <input
-                              type="checkbox"
-                              aria-label="Select all"
-                              checked={candidateShares.length > 0 && candidateShares.every((s) => draft.selected.has(s.split.id))}
-                              onChange={(e) => {
-                                setDraft((d) => {
-                                  if (!d) return d;
-                                  const next = new Set<string>();
-                                  if (e.target.checked) {
-                                    for (const s of candidateShares) next.add(s.split.id);
-                                  }
-                                  return { ...d, selected: next };
-                                });
-                              }}
-                            />
-                          </th>
-                          <th className="table-cell text-left text-xs uppercase tracking-wide text-slate-600">Date</th>
-                          <th className="table-cell text-left text-xs uppercase tracking-wide text-slate-600">Merchant</th>
-                          <th className="table-cell text-left text-xs uppercase tracking-wide text-slate-600">Category</th>
-                          <th className="table-cell text-right text-xs uppercase tracking-wide text-slate-600">Total</th>
-                          <th className="table-cell text-right text-xs uppercase tracking-wide text-slate-600">Owed</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {candidateShares.map(({ split, expense }) => {
-                          const cat = expense.category_id ? categoriesById.get(expense.category_id) : null;
-                          const selected = draft.selected.has(split.id);
-                          return (
-                            <tr key={split.id} className={selected ? "bg-emerald-50/40" : "hover:bg-slate-50"}>
-                              <td className="table-cell">
-                                <input
-                                  type="checkbox"
-                                  checked={selected}
-                                  onChange={() => toggleSelect(split.id)}
-                                  aria-label={`Include ${expense.merchant}`}
-                                />
-                              </td>
-                              <td className="table-cell whitespace-nowrap text-slate-600">{formatDate(expense.expense_date)}</td>
-                              <td className="table-cell font-medium">{expense.merchant}</td>
-                              <td className="table-cell">
-                                {cat ? <Badge color={colorForCategory(cat.name)}>{cat.name}</Badge> : <span className="text-slate-400">—</span>}
-                              </td>
-                              <td className="table-cell text-right tabular-nums text-slate-600">
-                                {formatMoney(Number(expense.total_amount), expense.currency)}
-                              </td>
-                              <td className="table-cell text-right tabular-nums font-medium">
-                                {formatMoney(Number(split.calculated_amount), expense.currency)}
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
-
-              <div>
-                <label className="label">Notes</label>
-                <textarea
-                  className="input"
-                  value={draft.notes}
-                  onChange={(e) => setDraft((d) => (d ? { ...d, notes: e.target.value } : d))}
-                  placeholder="Optional"
-                />
-              </div>
-              {err && <p className="text-sm text-brand-danger">{err}</p>}
-            </div>
-
-            <div className="px-5 py-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3">
-              <div className="text-sm">
-                <span className="text-slate-500">Selected total:</span>{" "}
-                <span className="font-semibold tabular-nums text-brand-navy">{formatMoney(draftTotal)}</span>
-              </div>
-              <div className="flex gap-2">
-                <button type="button" className="btn-secondary" onClick={() => setDraft(null)}>Cancel</button>
-                <button className="btn-primary" disabled={pending || draft.selected.size === 0}>
-                  {pending ? "Creating…" : "Create settlement"}
-                </button>
-              </div>
-            </div>
-          </form>
-        </div>
-      )}
+      <CreateSettlementModal
+        open={draftSeed !== null}
+        onClose={() => setDraftSeed(null)}
+        profiles={profiles}
+        expenses={expenses}
+        splits={splits}
+        categories={categories}
+        initialFromUserId={draftSeed?.from_user_id}
+        initialToUserId={draftSeed?.to_user_id}
+        suggestedAmount={draftSeed?.suggested_amount}
+      />
     </div>
   );
 }

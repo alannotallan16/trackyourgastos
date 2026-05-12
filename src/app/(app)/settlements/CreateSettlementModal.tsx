@@ -3,11 +3,11 @@
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { createSettlement } from "./actions";
-import { findUnpaidShares } from "@/lib/balances";
+import { findUnpaidShares, type UnpaidShare } from "@/lib/balances";
 import { formatDate, formatMoney } from "@/lib/format";
 import type { Category, Expense, ExpenseSplit, Profile } from "@/lib/types";
 import { Badge, colorForCategory } from "@/components/ui/Badge";
-import { X } from "@/components/ui/icons";
+import { ArrowRight, X } from "@/components/ui/icons";
 
 interface Props {
   open: boolean;
@@ -16,12 +16,14 @@ interface Props {
   expenses: Expense[];
   splits: ExpenseSplit[];
   categories: Category[];
-  initialFromUserId?: string;
-  initialToUserId?: string;
+  initialParticipantAId?: string;
+  initialParticipantBId?: string;
   suggestedAmount?: number;
 }
 
 const ROUND2 = (n: number) => Math.round(n * 100) / 100;
+
+type Section = "AtoB" | "BtoA";
 
 export function CreateSettlementModal({
   open,
@@ -30,112 +32,110 @@ export function CreateSettlementModal({
   expenses,
   splits,
   categories,
-  initialFromUserId,
-  initialToUserId,
+  initialParticipantAId,
+  initialParticipantBId,
   suggestedAmount
 }: Props) {
   const router = useRouter();
-
   const profilesById = useMemo(() => new Map(profiles.map((p) => [p.id, p])), [profiles]);
   const categoriesById = useMemo(() => new Map(categories.map((c) => [c.id, c])), [categories]);
 
-  const initialFrom = initialFromUserId ?? profiles[0]?.id ?? "";
-  const initialTo =
-    initialToUserId ?? profiles.find((p) => p.id !== initialFrom)?.id ?? profiles[1]?.id ?? "";
+  const defaultA = initialParticipantAId ?? profiles[0]?.id ?? "";
+  const defaultB =
+    initialParticipantBId ?? profiles.find((p) => p.id !== defaultA)?.id ?? profiles[1]?.id ?? "";
 
-  const [fromId, setFromId] = useState(initialFrom);
-  const [toId, setToId] = useState(initialTo);
+  const [aId, setAId] = useState(defaultA);
+  const [bId, setBId] = useState(defaultB);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [notes, setNotes] = useState("");
   const [filterFrom, setFilterFrom] = useState("");
   const [filterTo, setFilterTo] = useState("");
   const [filterCategory, setFilterCategory] = useState("");
   const [filterMerchant, setFilterMerchant] = useState("");
+  const [detailed, setDetailed] = useState(true);
 
-  const lastClickedIndexRef = useRef<number | null>(null);
+  const anchorRefA = useRef<number | null>(null);
+  const anchorRefB = useRef<number | null>(null);
   const [pending, start] = useTransition();
   const [err, setErr] = useState<string | null>(null);
 
-  // Sync internal state to incoming props whenever the modal is (re)opened.
+  // ----- Candidate sets (both directions) ---------------------------------
+  const sharesAtoB = useMemo(
+    () => (open ? findUnpaidShares(expenses, splits, aId, bId) : []),
+    [open, expenses, splits, aId, bId]
+  );
+  const sharesBtoA = useMemo(
+    () => (open ? findUnpaidShares(expenses, splits, bId, aId) : []),
+    [open, expenses, splits, aId, bId]
+  );
+
+  // Reset selection & filters whenever the modal opens or A/B changes.
   useEffect(() => {
     if (!open) return;
-    const f = initialFromUserId ?? profiles[0]?.id ?? "";
-    const t = initialToUserId ?? profiles.find((p) => p.id !== f)?.id ?? profiles[1]?.id ?? "";
-    setFromId(f);
-    setToId(t);
-    setNotes("");
     setFilterFrom("");
     setFilterTo("");
     setFilterCategory("");
     setFilterMerchant("");
+    setNotes("");
     setErr(null);
-    lastClickedIndexRef.current = null;
-    // Pre-select all candidates between (f, t) so the typical "settle
-    // everything between these two" case is one click away. The user can
-    // clear and re-pick.
-    const matches = findUnpaidShares(expenses, splits, f, t);
-    setSelected(new Set(matches.map((m) => m.split.id)));
+    anchorRefA.current = null;
+    anchorRefB.current = null;
+    setSelected(new Set([...sharesAtoB.map((s) => s.split.id), ...sharesBtoA.map((s) => s.split.id)]));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, initialFromUserId, initialToUserId]);
+  }, [open, aId, bId]);
 
-  // When the user changes from/to inside the modal, reset selection.
-  function changeFrom(id: string) {
-    setFromId(id);
-    const matches = findUnpaidShares(expenses, splits, id, toId);
-    setSelected(new Set(matches.map((m) => m.split.id)));
-    lastClickedIndexRef.current = null;
-  }
-  function changeTo(id: string) {
-    setToId(id);
-    const matches = findUnpaidShares(expenses, splits, fromId, id);
-    setSelected(new Set(matches.map((m) => m.split.id)));
-    lastClickedIndexRef.current = null;
-  }
-
-  // Base candidate list (all unpaid shares in the direction).
-  const candidateShares = useMemo(
-    () => findUnpaidShares(expenses, splits, fromId, toId),
-    [expenses, splits, fromId, toId]
-  );
-
-  // After in-modal filters.
-  const filteredShares = useMemo(() => {
+  // ----- Filters ---------------------------------------------------------
+  function applyFilters(rows: UnpaidShare[]) {
     const merchantLower = filterMerchant.trim().toLowerCase();
-    return candidateShares.filter(({ expense }) => {
+    return rows.filter(({ expense }) => {
       if (filterFrom && expense.expense_date < filterFrom) return false;
       if (filterTo && expense.expense_date > filterTo) return false;
       if (filterCategory && expense.category_id !== filterCategory) return false;
       if (merchantLower && !expense.merchant.toLowerCase().includes(merchantLower)) return false;
       return true;
     });
-  }, [candidateShares, filterFrom, filterTo, filterCategory, filterMerchant]);
-
-  const selectedTotal = useMemo(() => {
-    let sum = 0;
-    for (const { split } of candidateShares) {
-      if (selected.has(split.id)) sum += Number(split.calculated_amount);
-    }
-    return ROUND2(sum);
-  }, [candidateShares, selected]);
-
-  const visibleSelectedCount = useMemo(
-    () => filteredShares.reduce((n, s) => (selected.has(s.split.id) ? n + 1 : n), 0),
-    [filteredShares, selected]
+  }
+  const filteredAtoB = useMemo(
+    () => applyFilters(sharesAtoB),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [sharesAtoB, filterFrom, filterTo, filterCategory, filterMerchant]
+  );
+  const filteredBtoA = useMemo(
+    () => applyFilters(sharesBtoA),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [sharesBtoA, filterFrom, filterTo, filterCategory, filterMerchant]
   );
 
-  const allVisibleSelected =
-    filteredShares.length > 0 && filteredShares.every((s) => selected.has(s.split.id));
-  const someVisibleSelected = filteredShares.some((s) => selected.has(s.split.id));
-  const hiddenSelectedCount = selected.size - visibleSelectedCount;
+  // ----- Totals ----------------------------------------------------------
+  function sumSelected(rows: UnpaidShare[]) {
+    let s = 0;
+    for (const r of rows) if (selected.has(r.split.id)) s += Number(r.split.calculated_amount);
+    return ROUND2(s);
+  }
+  const grossAtoB = useMemo(() => sumSelected(sharesAtoB), [sharesAtoB, selected]);
+  const grossBtoA = useMemo(() => sumSelected(sharesBtoA), [sharesBtoA, selected]);
+  const netSigned = ROUND2(grossAtoB - grossBtoA);
+  const netAbs = Math.abs(netSigned);
+  const fullyOffset = netAbs < 0.005 && (grossAtoB > 0 || grossBtoA > 0);
 
-  // Selection helpers ------------------------------------------------------
+  const netDebtorId = netSigned >= 0 ? aId : bId;
+  const netCreditorId = netSigned >= 0 ? bId : aId;
+  const aName = profilesById.get(aId)?.display_name ?? "A";
+  const bName = profilesById.get(bId)?.display_name ?? "B";
+  const netDebtorName = profilesById.get(netDebtorId)?.display_name ?? "—";
+  const netCreditorName = profilesById.get(netCreditorId)?.display_name ?? "—";
 
-  function applyRange(start: number, end: number, value: boolean) {
+  const totalSelectedCount = selected.size;
+  const visibleCount = filteredAtoB.length + filteredBtoA.length;
+  const candidateCount = sharesAtoB.length + sharesBtoA.length;
+
+  // ----- Selection helpers ----------------------------------------------
+  function applyRange(rows: UnpaidShare[], start: number, end: number, value: boolean) {
     const [a, b] = start <= end ? [start, end] : [end, start];
     setSelected((prev) => {
       const next = new Set(prev);
       for (let i = a; i <= b; i++) {
-        const id = filteredShares[i]?.split.id;
+        const id = rows[i]?.split.id;
         if (!id) continue;
         if (value) next.add(id);
         else next.delete(id);
@@ -144,14 +144,14 @@ export function CreateSettlementModal({
     });
   }
 
-  function toggleOne(index: number, shiftKey: boolean) {
-    const id = filteredShares[index]?.split.id;
+  function toggleAt(section: Section, rows: UnpaidShare[], index: number, shiftKey: boolean) {
+    const id = rows[index]?.split.id;
     if (!id) return;
     const wasSelected = selected.has(id);
     const nextValue = !wasSelected;
-
-    if (shiftKey && lastClickedIndexRef.current != null) {
-      applyRange(lastClickedIndexRef.current, index, nextValue);
+    const anchor = section === "AtoB" ? anchorRefA : anchorRefB;
+    if (shiftKey && anchor.current != null) {
+      applyRange(rows, anchor.current, index, nextValue);
     } else {
       setSelected((prev) => {
         const next = new Set(prev);
@@ -160,57 +160,63 @@ export function CreateSettlementModal({
         return next;
       });
     }
-    lastClickedIndexRef.current = index;
+    anchor.current = index;
   }
 
+  function selectAllInSection(rows: UnpaidShare[]) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      for (const r of rows) next.add(r.split.id);
+      return next;
+    });
+  }
+  function clearInSection(rows: UnpaidShare[]) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      for (const r of rows) next.delete(r.split.id);
+      return next;
+    });
+  }
   function selectAllVisible() {
     setSelected((prev) => {
       const next = new Set(prev);
-      for (const s of filteredShares) next.add(s.split.id);
+      for (const r of [...filteredAtoB, ...filteredBtoA]) next.add(r.split.id);
       return next;
     });
   }
   function clearAllVisible() {
     setSelected((prev) => {
       const next = new Set(prev);
-      for (const s of filteredShares) next.delete(s.split.id);
+      for (const r of [...filteredAtoB, ...filteredBtoA]) next.delete(r.split.id);
       return next;
     });
   }
-  function invertVisible() {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      for (const s of filteredShares) {
-        if (next.has(s.split.id)) next.delete(s.split.id);
-        else next.add(s.split.id);
-      }
-      return next;
-    });
-  }
-  function clearFilters() {
+  function resetFilters() {
     setFilterFrom("");
     setFilterTo("");
     setFilterCategory("");
     setFilterMerchant("");
   }
 
-  // Submit -----------------------------------------------------------------
-
+  // ----- Submit ----------------------------------------------------------
   function submit(e: React.FormEvent) {
     e.preventDefault();
     setErr(null);
-    const ids = Array.from(selected);
-    if (ids.length === 0) {
+    if (selected.size === 0) {
       setErr("Pick at least one expense share to include.");
+      return;
+    }
+    if (grossAtoB === 0 && grossBtoA === 0) {
+      setErr("Selected shares add up to zero — nothing to reconcile.");
       return;
     }
     start(async () => {
       try {
         const { id } = await createSettlement({
-          from_user_id: fromId,
-          to_user_id: toId,
+          participant_a_id: aId,
+          participant_b_id: bId,
           currency: "PHP",
-          split_ids: ids,
+          split_ids: Array.from(selected),
           notes: notes || null
         });
         onClose();
@@ -223,15 +229,21 @@ export function CreateSettlementModal({
 
   if (!open) return null;
 
-  // Difference vs the suggested amount (if any).
-  const diff = suggestedAmount != null ? ROUND2(selectedTotal - suggestedAmount) : null;
+  // Net direction copy
+  const netCopy =
+    fullyOffset
+      ? "Fully offset — no payment needed"
+      : netAbs > 0
+        ? `${netDebtorName} pays ${netCreditorName}`
+        : "No selection yet";
+  const diffVsSuggested =
+    suggestedAmount != null ? ROUND2(netAbs - suggestedAmount) : null;
   const diffColor =
-    diff == null
+    diffVsSuggested == null
       ? "text-slate-500"
-      : Math.abs(diff) < 0.005
+      : Math.abs(diffVsSuggested) < 0.005
         ? "text-brand-green"
         : "text-amber-700";
-  const diffLabel = diff == null ? null : diff === 0 ? "₱0.00" : `${diff > 0 ? "+" : ""}${formatMoney(diff)}`;
 
   return (
     <div className="fixed inset-0 z-40 flex items-stretch md:items-center md:justify-center md:p-4">
@@ -250,10 +262,15 @@ export function CreateSettlementModal({
           <div>
             <h2 className="text-lg font-semibold text-brand-navy">Create settlement</h2>
             <p className="text-xs text-slate-500">
-              Bundle unpaid expense shares from one person to another into a single reconcilable settlement.
+              Reconcile unpaid expense shares between two people in both directions. The net amount is the only payment that has to change hands.
             </p>
           </div>
-          <button type="button" onClick={onClose} aria-label="Close" className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100">
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100"
+          >
             <X className="h-5 w-5" />
           </button>
         </div>
@@ -261,18 +278,22 @@ export function CreateSettlementModal({
         {/* Filters */}
         <div className="px-5 py-3 border-b border-slate-100 bg-slate-50/60 grid grid-cols-2 md:grid-cols-6 gap-2">
           <div>
-            <label className="label">From (owes)</label>
-            <select className="input" value={fromId} onChange={(e) => changeFrom(e.target.value)}>
+            <label className="label">Participant A</label>
+            <select className="input" value={aId} onChange={(e) => setAId(e.target.value)}>
               {profiles.map((p) => (
-                <option key={p.id} value={p.id}>{p.display_name}</option>
+                <option key={p.id} value={p.id} disabled={p.id === bId}>
+                  {p.display_name}
+                </option>
               ))}
             </select>
           </div>
           <div>
-            <label className="label">To (paid)</label>
-            <select className="input" value={toId} onChange={(e) => changeTo(e.target.value)}>
+            <label className="label">Participant B</label>
+            <select className="input" value={bId} onChange={(e) => setBId(e.target.value)}>
               {profiles.map((p) => (
-                <option key={p.id} value={p.id}>{p.display_name}</option>
+                <option key={p.id} value={p.id} disabled={p.id === aId}>
+                  {p.display_name}
+                </option>
               ))}
             </select>
           </div>
@@ -305,163 +326,145 @@ export function CreateSettlementModal({
           </div>
         </div>
 
-        {/* Sticky summary bar */}
-        <div className="px-5 py-2.5 border-b border-slate-200 bg-emerald-50/40 flex flex-wrap items-center justify-between gap-3 text-sm">
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-            <span>
-              <span className="text-slate-500">Selected:</span>{" "}
-              <strong className="text-brand-navy tabular-nums">{selected.size}</strong>
-              {hiddenSelectedCount > 0 && (
-                <span className="text-xs text-slate-500 ml-1">({hiddenSelectedCount} hidden by filters)</span>
-              )}
-            </span>
-            <span>
-              <span className="text-slate-500">Total:</span>{" "}
-              <strong className="text-brand-navy tabular-nums">{formatMoney(selectedTotal)}</strong>
-            </span>
-            {suggestedAmount != null && (
-              <>
-                <span>
-                  <span className="text-slate-500">Suggested:</span>{" "}
-                  <strong className="text-brand-navy tabular-nums">{formatMoney(suggestedAmount)}</strong>
+        {/* Netting summary bar */}
+        <div className="px-5 py-3 border-b border-slate-200 bg-emerald-50/40">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-2">
+            <SummaryStat
+              label={`${aName} → ${bName}`}
+              value={formatMoney(grossAtoB)}
+              hint={`${sharesAtoB.length} unpaid share${sharesAtoB.length === 1 ? "" : "s"} available`}
+            />
+            <SummaryStat
+              label={`${bName} → ${aName}`}
+              value={formatMoney(grossBtoA)}
+              hint={`${sharesBtoA.length} unpaid share${sharesBtoA.length === 1 ? "" : "s"} available`}
+            />
+            <div
+              className={`rounded-xl border px-3 py-2 ${
+                fullyOffset
+                  ? "bg-emerald-100/60 border-emerald-200"
+                  : "bg-white border-slate-200"
+              }`}
+            >
+              <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Net result</div>
+              <div className="mt-0.5 flex items-baseline gap-2 flex-wrap">
+                <span className={`text-xl font-semibold tabular-nums ${fullyOffset ? "text-brand-green" : "text-brand-navy"}`}>
+                  {fullyOffset ? "₱0.00" : formatMoney(netAbs)}
                 </span>
-                <span>
-                  <span className="text-slate-500">Diff:</span>{" "}
-                  <strong className={`tabular-nums ${diffColor}`}>{diffLabel}</strong>
-                </span>
-              </>
-            )}
-            {filteredShares.length !== candidateShares.length && (
-              <span className="text-xs text-slate-500">
-                Showing {filteredShares.length} of {candidateShares.length}
-              </span>
-            )}
+                {!fullyOffset && netAbs > 0 && (
+                  <span className="text-sm text-slate-600 inline-flex items-center gap-1">
+                    {netDebtorName}
+                    <ArrowRight className="h-3.5 w-3.5 text-slate-400" />
+                    {netCreditorName}
+                  </span>
+                )}
+              </div>
+              <div className="text-xs mt-0.5 text-slate-500">{netCopy}</div>
+            </div>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              className="btn-secondary !py-1 !px-3 text-xs"
-              onClick={selectAllVisible}
-              disabled={filteredShares.length === 0 || allVisibleSelected}
-            >
-              Select all visible
-            </button>
-            <button
-              type="button"
-              className="btn-secondary !py-1 !px-3 text-xs"
-              onClick={clearAllVisible}
-              disabled={!someVisibleSelected}
-            >
-              Clear visible
-            </button>
-            <button
-              type="button"
-              className="btn-secondary !py-1 !px-3 text-xs"
-              onClick={invertVisible}
-              disabled={filteredShares.length === 0}
-            >
-              Invert
-            </button>
-            <button
-              type="button"
-              className="btn-ghost !py-1 !px-3 text-xs"
-              onClick={clearFilters}
-            >
-              Reset filters
-            </button>
+
+          <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+              <span>
+                <span className="text-slate-500">Selected:</span>{" "}
+                <strong className="text-brand-navy tabular-nums">{totalSelectedCount}</strong>
+                <span className="text-slate-400 ml-1">/ {candidateCount}</span>
+              </span>
+              {visibleCount !== candidateCount && (
+                <span className="text-slate-500">Showing {visibleCount} of {candidateCount} after filters</span>
+              )}
+              {suggestedAmount != null && (
+                <span>
+                  <span className="text-slate-500">Suggested net:</span>{" "}
+                  <strong className="text-brand-navy tabular-nums">{formatMoney(suggestedAmount)}</strong>
+                  {diffVsSuggested != null && (
+                    <span className={`ml-1.5 tabular-nums ${diffColor}`}>
+                      ({diffVsSuggested === 0 ? "match" : `${diffVsSuggested > 0 ? "+" : ""}${formatMoney(diffVsSuggested)}`})
+                    </span>
+                  )}
+                </span>
+              )}
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                className="btn-secondary !py-1 !px-3 text-xs"
+                onClick={selectAllVisible}
+                disabled={visibleCount === 0}
+              >
+                Select all visible
+              </button>
+              <button
+                type="button"
+                className="btn-secondary !py-1 !px-3 text-xs"
+                onClick={clearAllVisible}
+                disabled={visibleCount === 0}
+              >
+                Clear visible
+              </button>
+              <button
+                type="button"
+                className="btn-ghost !py-1 !px-3 text-xs"
+                onClick={resetFilters}
+              >
+                Reset filters
+              </button>
+              <button
+                type="button"
+                className="btn-ghost !py-1 !px-3 text-xs"
+                onClick={() => setDetailed((v) => !v)}
+              >
+                {detailed ? "Net view" : "Detailed view"}
+              </button>
+            </div>
           </div>
         </div>
 
-        {/* Table */}
+        {/* Body */}
         <div className="flex-1 min-h-0 overflow-auto">
-          {filteredShares.length === 0 ? (
-            <div className="h-full flex items-center justify-center px-6 py-12">
-              <p className="text-sm text-slate-500 text-center">
-                {candidateShares.length === 0
-                  ? "No unpaid shares between these two people right now."
-                  : "No shares match the current filters."}
-              </p>
+          {!detailed ? (
+            <div className="p-6 md:p-10 text-sm space-y-4">
+              <div className="card max-w-xl mx-auto">
+                <h3 className="font-semibold text-brand-navy mb-2">Reconciliation summary</h3>
+                <ul className="space-y-1 text-slate-700">
+                  <li className="flex justify-between"><span>{aName} owes {bName}</span><span className="tabular-nums">{formatMoney(grossAtoB)}</span></li>
+                  <li className="flex justify-between"><span>{bName} owes {aName}</span><span className="tabular-nums">{formatMoney(grossBtoA)}</span></li>
+                  <li className="flex justify-between border-t border-slate-200 pt-2 mt-2 font-semibold text-brand-navy">
+                    <span>Net</span>
+                    <span className="tabular-nums">{fullyOffset ? "₱0.00 (offset)" : formatMoney(netAbs)}</span>
+                  </li>
+                </ul>
+                <p className="mt-3 text-xs text-slate-500">{netCopy}</p>
+              </div>
             </div>
           ) : (
-            <table className="min-w-full text-sm select-none">
-              <thead className="bg-slate-50 sticky top-0 z-10">
-                <tr>
-                  <th className="px-3 py-2 text-left w-10 border-b border-slate-200">
-                    <input
-                      type="checkbox"
-                      aria-label="Select all visible"
-                      ref={(el) => {
-                        if (el) el.indeterminate = someVisibleSelected && !allVisibleSelected;
-                      }}
-                      checked={allVisibleSelected}
-                      onChange={(e) => (e.target.checked ? selectAllVisible() : clearAllVisible())}
-                    />
-                  </th>
-                  <th className="px-3 py-2 text-left text-xs uppercase tracking-wide text-slate-600 border-b border-slate-200">Date</th>
-                  <th className="px-3 py-2 text-left text-xs uppercase tracking-wide text-slate-600 border-b border-slate-200">Merchant</th>
-                  <th className="px-3 py-2 text-left text-xs uppercase tracking-wide text-slate-600 border-b border-slate-200">Category</th>
-                  <th className="px-3 py-2 text-right text-xs uppercase tracking-wide text-slate-600 border-b border-slate-200">Total</th>
-                  <th className="px-3 py-2 text-right text-xs uppercase tracking-wide text-slate-600 border-b border-slate-200">Owed</th>
-                  <th className="px-3 py-2 text-left text-xs uppercase tracking-wide text-slate-600 border-b border-slate-200">Paid by</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredShares.map(({ split, expense }, i) => {
-                  const cat = expense.category_id ? categoriesById.get(expense.category_id) : null;
-                  const isSelected = selected.has(split.id);
-                  return (
-                    <tr
-                      key={split.id}
-                      onClick={(e) => {
-                        // Ignore clicks from the checkbox itself — its onChange already handles it.
-                        const target = e.target as HTMLElement;
-                        if (target.tagName === "INPUT") return;
-                        toggleOne(i, e.shiftKey);
-                      }}
-                      className={
-                        isSelected
-                          ? "bg-emerald-50 border-l-4 border-brand-green cursor-pointer"
-                          : "border-l-4 border-transparent hover:bg-slate-50 cursor-pointer"
-                      }
-                    >
-                      <td className="px-3 py-2 border-b border-slate-100">
-                        <input
-                          type="checkbox"
-                          checked={isSelected}
-                          onChange={() => toggleOne(i, false)}
-                          onClick={(e) => {
-                            // Honour shift+click on the checkbox itself.
-                            if (e.shiftKey) {
-                              e.preventDefault();
-                              toggleOne(i, true);
-                            }
-                          }}
-                          aria-label={`Include ${expense.merchant}`}
-                        />
-                      </td>
-                      <td className="px-3 py-2 whitespace-nowrap text-slate-600 border-b border-slate-100">
-                        {formatDate(expense.expense_date)}
-                      </td>
-                      <td className="px-3 py-2 font-medium text-brand-navy border-b border-slate-100">
-                        {expense.merchant}
-                      </td>
-                      <td className="px-3 py-2 border-b border-slate-100">
-                        {cat ? <Badge color={colorForCategory(cat.name)}>{cat.name}</Badge> : <span className="text-slate-400">—</span>}
-                      </td>
-                      <td className="px-3 py-2 text-right tabular-nums text-slate-600 border-b border-slate-100">
-                        {formatMoney(Number(expense.total_amount), expense.currency)}
-                      </td>
-                      <td className="px-3 py-2 text-right tabular-nums font-semibold border-b border-slate-100">
-                        {formatMoney(Number(split.calculated_amount), expense.currency)}
-                      </td>
-                      <td className="px-3 py-2 text-slate-600 border-b border-slate-100">
-                        {profilesById.get(expense.paid_by_user_id)?.display_name ?? "—"}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+            <>
+              <BilateralSection
+                title={`${aName} owes ${bName}`}
+                subtitle="A→B direction"
+                rows={filteredAtoB}
+                allRows={sharesAtoB}
+                selected={selected}
+                onToggle={(index, shiftKey) => toggleAt("AtoB", filteredAtoB, index, shiftKey)}
+                onSelectAll={() => selectAllInSection(filteredAtoB)}
+                onClear={() => clearInSection(filteredAtoB)}
+                profilesById={profilesById}
+                categoriesById={categoriesById}
+              />
+              <BilateralSection
+                title={`${bName} owes ${aName}`}
+                subtitle="B→A direction (offsets)"
+                rows={filteredBtoA}
+                allRows={sharesBtoA}
+                selected={selected}
+                onToggle={(index, shiftKey) => toggleAt("BtoA", filteredBtoA, index, shiftKey)}
+                onSelectAll={() => selectAllInSection(filteredBtoA)}
+                onClear={() => clearInSection(filteredBtoA)}
+                profilesById={profilesById}
+                categoriesById={categoriesById}
+                offsetStyle
+              />
+            </>
           )}
         </div>
 
@@ -476,7 +479,7 @@ export function CreateSettlementModal({
                 type="text"
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
-                placeholder="e.g. Settlement for January expenses"
+                placeholder="e.g. January reconciliation between Mari Len and Alan"
               />
             </div>
             <div className="flex items-center gap-2 self-end">
@@ -487,12 +490,192 @@ export function CreateSettlementModal({
                 Cancel
               </button>
               <button className="btn-primary" disabled={pending || selected.size === 0}>
-                {pending ? "Creating…" : `Create settlement (${selected.size})`}
+                {pending
+                  ? "Creating…"
+                  : fullyOffset
+                    ? "Create settlement (offset)"
+                    : `Create settlement (${formatMoney(netAbs)})`}
               </button>
             </div>
           </div>
         </div>
       </form>
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function SummaryStat({ label, value, hint }: { label: string; value: string; hint?: string }) {
+  return (
+    <div className="rounded-xl bg-white border border-slate-200 px-3 py-2">
+      <div className="text-xs font-semibold uppercase tracking-wide text-slate-500 truncate">{label}</div>
+      <div className="mt-0.5 text-xl font-semibold tabular-nums text-brand-navy">{value}</div>
+      {hint && <div className="text-xs text-slate-500 mt-0.5">{hint}</div>}
+    </div>
+  );
+}
+
+interface SectionProps {
+  title: string;
+  subtitle: string;
+  rows: UnpaidShare[];
+  allRows: UnpaidShare[];
+  selected: Set<string>;
+  onToggle: (index: number, shiftKey: boolean) => void;
+  onSelectAll: () => void;
+  onClear: () => void;
+  profilesById: Map<string, Profile>;
+  categoriesById: Map<string, Category>;
+  offsetStyle?: boolean;
+}
+
+function BilateralSection({
+  title,
+  subtitle,
+  rows,
+  allRows,
+  selected,
+  onToggle,
+  onSelectAll,
+  onClear,
+  profilesById,
+  categoriesById,
+  offsetStyle
+}: SectionProps) {
+  const visibleSelectedCount = rows.reduce((n, r) => (selected.has(r.split.id) ? n + 1 : n), 0);
+  const allChecked = rows.length > 0 && rows.every((r) => selected.has(r.split.id));
+  const someChecked = visibleSelectedCount > 0 && !allChecked;
+  const subtotal = rows.reduce(
+    (s, r) => (selected.has(r.split.id) ? s + Number(r.split.calculated_amount) : s),
+    0
+  );
+
+  return (
+    <section className="border-b border-slate-100 last:border-b-0">
+      <div
+        className={`flex flex-wrap items-center justify-between gap-2 px-5 py-2 ${
+          offsetStyle ? "bg-amber-50/60" : "bg-slate-50"
+        }`}
+      >
+        <div>
+          <h3 className="text-sm font-semibold text-brand-navy">{title}</h3>
+          <p className="text-[11px] text-slate-500">{subtitle}</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          <span className="text-slate-500">
+            Selected <strong className="text-brand-navy tabular-nums">{visibleSelectedCount}</strong> / {rows.length}
+            {rows.length < allRows.length && (
+              <span className="text-slate-400 ml-1">({allRows.length} total)</span>
+            )}{" "}
+            · <strong className="text-brand-navy tabular-nums">{formatMoney(Math.round(subtotal * 100) / 100)}</strong>
+          </span>
+          <button
+            type="button"
+            className="btn-secondary !py-1 !px-2.5 text-[11px]"
+            onClick={onSelectAll}
+            disabled={rows.length === 0 || allChecked}
+          >
+            Select all
+          </button>
+          <button
+            type="button"
+            className="btn-secondary !py-1 !px-2.5 text-[11px]"
+            onClick={onClear}
+            disabled={visibleSelectedCount === 0}
+          >
+            Clear
+          </button>
+        </div>
+      </div>
+
+      {rows.length === 0 ? (
+        <p className="text-sm text-slate-500 text-center py-6">
+          {allRows.length === 0
+            ? "No unpaid shares in this direction."
+            : "No shares match the current filters."}
+        </p>
+      ) : (
+        <table className="min-w-full text-sm select-none">
+          <thead className="bg-white">
+            <tr>
+              <th className="px-3 py-1.5 text-left w-10 border-b border-slate-100">
+                <input
+                  type="checkbox"
+                  aria-label={`Select all in ${title}`}
+                  ref={(el) => {
+                    if (el) el.indeterminate = someChecked;
+                  }}
+                  checked={allChecked}
+                  onChange={() => (allChecked ? onClear() : onSelectAll())}
+                />
+              </th>
+              <th className="px-3 py-1.5 text-left text-xs uppercase tracking-wide text-slate-600 border-b border-slate-100">Date</th>
+              <th className="px-3 py-1.5 text-left text-xs uppercase tracking-wide text-slate-600 border-b border-slate-100">Merchant</th>
+              <th className="px-3 py-1.5 text-left text-xs uppercase tracking-wide text-slate-600 border-b border-slate-100">Category</th>
+              <th className="px-3 py-1.5 text-right text-xs uppercase tracking-wide text-slate-600 border-b border-slate-100">Total</th>
+              <th className="px-3 py-1.5 text-right text-xs uppercase tracking-wide text-slate-600 border-b border-slate-100">Owed</th>
+              <th className="px-3 py-1.5 text-left text-xs uppercase tracking-wide text-slate-600 border-b border-slate-100">Paid by</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map(({ split, expense }, i) => {
+              const cat = expense.category_id ? categoriesById.get(expense.category_id) : null;
+              const isSelected = selected.has(split.id);
+              return (
+                <tr
+                  key={split.id}
+                  onClick={(e) => {
+                    const target = e.target as HTMLElement;
+                    if (target.tagName === "INPUT") return;
+                    onToggle(i, e.shiftKey);
+                  }}
+                  className={
+                    isSelected
+                      ? `${offsetStyle ? "bg-amber-50" : "bg-emerald-50"} border-l-4 ${offsetStyle ? "border-amber-500" : "border-brand-green"} cursor-pointer`
+                      : "border-l-4 border-transparent hover:bg-slate-50 cursor-pointer"
+                  }
+                >
+                  <td className="px-3 py-2 border-b border-slate-100">
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={() => onToggle(i, false)}
+                      onClick={(e) => {
+                        if (e.shiftKey) {
+                          e.preventDefault();
+                          onToggle(i, true);
+                        }
+                      }}
+                      aria-label={`Include ${expense.merchant}`}
+                    />
+                  </td>
+                  <td className="px-3 py-2 whitespace-nowrap text-slate-600 border-b border-slate-100">
+                    {formatDate(expense.expense_date)}
+                  </td>
+                  <td className="px-3 py-2 font-medium text-brand-navy border-b border-slate-100">
+                    {expense.merchant}
+                  </td>
+                  <td className="px-3 py-2 border-b border-slate-100">
+                    {cat ? <Badge color={colorForCategory(cat.name)}>{cat.name}</Badge> : <span className="text-slate-400">—</span>}
+                  </td>
+                  <td className="px-3 py-2 text-right tabular-nums text-slate-600 border-b border-slate-100">
+                    {formatMoney(Number(expense.total_amount), expense.currency)}
+                  </td>
+                  <td className="px-3 py-2 text-right tabular-nums font-semibold border-b border-slate-100">
+                    {formatMoney(Number(split.calculated_amount), expense.currency)}
+                  </td>
+                  <td className="px-3 py-2 text-slate-600 border-b border-slate-100">
+                    {profilesById.get(expense.paid_by_user_id)?.display_name ?? "—"}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      )}
+    </section>
   );
 }

@@ -24,8 +24,8 @@ interface Props {
 const PERSON_ICON_BG = ["green", "blue", "purple"] as const;
 
 interface DraftSeed {
-  from_user_id?: string;
-  to_user_id?: string;
+  participant_a_id?: string;
+  participant_b_id?: string;
   suggested_amount?: number;
 }
 
@@ -94,8 +94,8 @@ export function SettlementsClient({
                       className="btn-secondary text-xs !px-3 !py-1.5"
                       onClick={() =>
                         setDraftSeed({
-                          from_user_id: s.from_user_id,
-                          to_user_id: s.to_user_id,
+                          participant_a_id: s.from_user_id,
+                          participant_b_id: s.to_user_id,
                           suggested_amount: s.amount
                         })
                       }
@@ -197,8 +197,8 @@ export function SettlementsClient({
         expenses={expenses}
         splits={splits}
         categories={categories}
-        initialFromUserId={draftSeed?.from_user_id}
-        initialToUserId={draftSeed?.to_user_id}
+        initialParticipantAId={draftSeed?.participant_a_id}
+        initialParticipantBId={draftSeed?.participant_b_id}
         suggestedAmount={draftSeed?.suggested_amount}
       />
     </div>

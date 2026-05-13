@@ -10,10 +10,22 @@ const poppins = Poppins({
 });
 
 export const metadata: Metadata = {
-  title: "TrackYourGastos — Track. Split. Settle.",
-  description: "Household expense tracker for Alan, Mari Cel, Mari Len",
+  title: "GastosHQ — Shared household expenses made simple.",
+  description: "Shared household expenses made simple.",
+  applicationName: "GastosHQ",
   icons: {
     icon: [{ url: "/favicon.svg", type: "image/svg+xml" }]
+  },
+  openGraph: {
+    title: "GastosHQ",
+    description: "Shared household expenses made simple.",
+    siteName: "GastosHQ",
+    type: "website"
+  },
+  twitter: {
+    card: "summary",
+    title: "GastosHQ",
+    description: "Shared household expenses made simple."
   }
 };
 

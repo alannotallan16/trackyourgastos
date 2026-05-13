@@ -127,7 +127,7 @@ export function ReportsClient({ profiles, expenses, splits, batches, batchResult
     const autoTable = autoTableMod.default ?? autoTableMod;
     const doc = new jsPDF({ orientation: "landscape" });
     doc.setFontSize(14);
-    doc.text("TrackYourGastos — Expense report", 14, 16);
+    doc.text("GastosHQ — Expense report", 14, 16);
     const rows = buildRows();
     const head = rows[0] ? [Object.keys(rows[0])] : [[]];
     const body = rows.map((r) => head[0].map((h) => formatCell(r[h])));

@@ -1,6 +1,8 @@
-# TrackYourGastos
+# GastosHQ
 
-**Track. Split. Settle.** A simple, private expense tracker for three users — **Alan**, **Mari Cel**, **Mari Len** — with receipt OCR, recurring expenses, settlements, and exports. Built on Next.js + Supabase, deployable free on Vercel.
+**Shared household expenses made simple.** A private expense tracker for three users — **Alan**, **Mari Cel**, **Mari Len** — with receipt OCR, recurring expenses, settlement batches (household-net reconciliation), and exports. Built on Next.js + Supabase, deployable free on Vercel.
+
+> Previously branded as **TrackYourGastos**. The repository name, Supabase project, Vercel project, table names, storage buckets, and migration history are unchanged — only the user-facing brand was renamed. See [Brand rename notes](#brand-rename--manual-steps-still-to-do) for the manual steps left to you.
 
 ## Stack
 - **Next.js 14** (App Router) + **TypeScript** + **Tailwind CSS** + **Poppins** (via `next/font`)
@@ -13,8 +15,10 @@
 
 ## Brand & assets
 
-- **Logo mark:** `public/logo-mark.svg` — wallet + green receipt with a peso symbol. Rendered inline by `src/components/ui/BrandLogo.tsx` in three variants (`sidebar`, `topbar`, `full`).
-- **Favicon:** `public/favicon.svg` — green→cyan gradient rounded square version of the mark. Wired up in `src/app/layout.tsx`.
+- **Wordmark:** `GastosHQ` — "Gastos" in navy / white (auto-flips per surface) and "HQ" in `brand-green`. Tagline: *Shared household expenses made simple.*
+- **Logo mark:** `public/logo-mark.svg` — green-gradient wallet with a navy peso receipt and a tiny orange button. Rendered inline by `src/components/ui/BrandLogo.tsx` in three variants (`sidebar`, `topbar`, `full`).
+- **Favicon:** `public/favicon.svg` — rounded green gradient square version of the mark. Wired up in `src/app/layout.tsx`.
+- **Drop-in PNG slot:** if you have a hi-res rendered `gastoshq-logo.png`, drop it at `public/branding/gastoshq-logo.png` and swap the inline `<svg>` block in `BrandLogo.tsx` for an `<img src="/branding/gastoshq-logo.png" .../>`. The component already handles dark vs light surfaces.
 - **Color palette** (Tailwind `brand` namespace, defined in `tailwind.config.ts`):
 
   | Token | Hex | Usage |
@@ -123,3 +127,19 @@ npm run start       # production server
 npm run typecheck   # tsc --noEmit
 npm run lint
 ```
+
+## Brand rename — manual steps still to do
+
+The brand was renamed **TrackYourGastos → GastosHQ** in-app. Internals were intentionally left alone to keep production stable. If/when you want to bring the rest in line, the manual steps are:
+
+- **GitHub repo:** still `alannotallan16/trackyourgastos`. Rename via GitHub *Settings → Repository name*. GitHub auto-redirects the old URL, but update any pinned local clones with `git remote set-url`.
+- **Vercel project:** still deploys at `trackyourgastos.vercel.app`. Vercel *Project Settings → General → Project Name* to rename (the `.vercel.app` URL follows). If you point a real domain like `gastoshq.app`, add it under *Domains*.
+- **Supabase:** project name in the Supabase dashboard is purely cosmetic — change it under *Settings → General → Name*. Do **not** rename tables, the storage bucket (`receipts`), or migration files.
+- **Auth redirects:** if you set a new domain, update *Supabase → Authentication → URL Configuration → Site URL + Redirect URLs* and any OAuth callback URLs that reference the old hostname.
+- **README badge / screenshots:** swap any external links pointing at the old name when convenient.
+
+Internal identifiers intentionally kept unchanged:
+
+- Supabase project ID, database table names (`expenses`, `expense_splits`, `settlement_batches`, …), migration filenames (`0001_init.sql` … `0006_settlement_batches.sql`), storage bucket name (`receipts`).
+- Env var names (`NEXT_PUBLIC_SUPABASE_URL`, `OCR_SPACE_API_KEY`, etc.).
+- Repository URL and Vercel project ID (the deploy keeps working).

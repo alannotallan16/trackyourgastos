@@ -1,18 +1,15 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="TrackYourGastos">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="GastosHQ">
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#10B981"/>
-      <stop offset="1" stop-color="#06B6D4"/>
+      <stop offset="0" stop-color="#0E9F76"/>
+      <stop offset="1" stop-color="#A7E847"/>
     </linearGradient>
   </defs>
   <rect width="64" height="64" rx="14" fill="url(#bg)"/>
-  <!-- Wallet body -->
   <rect x="13" y="24" width="38" height="26" rx="4" fill="#FFFFFF"/>
   <rect x="13" y="24" width="38" height="6" fill="#0D1B2A" fill-opacity="0.08"/>
-  <!-- Card slot accent -->
-  <circle cx="44" cy="37" r="3" fill="#10B981"/>
-  <!-- Receipt -->
+  <rect x="36" y="34" width="11" height="9" rx="2" fill="#F59E0B"/>
+  <circle cx="41.5" cy="38.5" r="1.4" fill="#0D1B2A"/>
   <path d="M22 11 h16 a2 2 0 0 1 2 2 v18 a1 1 0 0 1 -1.7 0.7 L34 28 l-2.5 2.5 a1 1 0 0 1 -1.4 0 L27.5 28 l-3.8 3.7 a1 1 0 0 1 -1.7 -0.7 V13 a2 2 0 0 1 2 -2 z" fill="#0D1B2A"/>
-  <!-- Peso symbol -->
   <text x="31" y="23" text-anchor="middle" font-family="Poppins, 'Helvetica Neue', Arial, sans-serif" font-weight="700" font-size="13" fill="#FFFFFF">₱</text>
 </svg>

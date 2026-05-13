@@ -72,7 +72,7 @@ export function AppShell({ children, userEmail }: { children: React.ReactNode; u
       {/* Desktop sidebar — sticky so it stays in view as main content scrolls */}
       <aside className="hidden md:flex md:flex-col w-60 shrink-0 bg-brand-navy text-white md:sticky md:top-0 md:h-screen md:self-start">
         <div className="px-5 py-5 shrink-0">
-          <Link href="/dashboard" aria-label="TrackYourGastos home">
+          <Link href="/dashboard" aria-label="GastosHQ home">
             <BrandLogo variant="sidebar" />
           </Link>
         </div>
@@ -102,7 +102,7 @@ export function AppShell({ children, userEmail }: { children: React.ReactNode; u
 
       {/* Mobile top bar */}
       <header className="md:hidden sticky top-0 z-20 flex items-center justify-between bg-brand-navy px-4 py-3 text-white">
-        <Link href="/dashboard" aria-label="TrackYourGastos home">
+        <Link href="/dashboard" aria-label="GastosHQ home">
           <BrandLogo variant="sidebar" />
         </Link>
         <button

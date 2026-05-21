@@ -195,6 +195,60 @@ export function ExpenseTable({ expenses, splits, profiles, categories, batches }
   const lastVisibleIdx = totalRows === 0 ? 0 : Math.min(startIdx + effectivePageSize, totalRows);
   const firstVisibleIdx = totalRows === 0 ? 0 : startIdx + 1;
 
+  // Shared pagination control rendered above and below the table.
+  const paginationBar = (position: "top" | "bottom") => (
+    <div
+      className={`flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 text-sm text-slate-600 bg-white ${
+        position === "top" ? "border-b border-slate-100" : "border-t border-slate-100"
+      }`}
+    >
+      <div className="text-xs sm:text-sm">
+        Showing {firstVisibleIdx}–{lastVisibleIdx} of {totalRows}
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <label className="flex items-center gap-1.5">
+          <span className="text-xs text-slate-500">Rows</span>
+          <select
+            className="input !w-auto !py-1.5 !px-2 text-sm"
+            value={String(pageSize)}
+            onChange={(e) => {
+              const v = e.target.value;
+              setPageSize(v === "all" ? "all" : (Number(v) as PageSize));
+            }}
+            aria-label="Rows per page"
+          >
+            {PAGE_SIZES.map((s) => (
+              <option key={String(s)} value={String(s)}>
+                {s === "all" ? "All" : s}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button
+          type="button"
+          className="btn-secondary !py-1.5 !px-2.5 text-sm"
+          onClick={() => setPage((p) => Math.max(1, p - 1))}
+          disabled={safePage <= 1}
+          aria-label="Previous page"
+        >
+          <ChevronLeft className="h-4 w-4" />
+        </button>
+        <span className="text-xs text-slate-500">
+          Page {safePage} of {pageCount}
+        </span>
+        <button
+          type="button"
+          className="btn-secondary !py-1.5 !px-2.5 text-sm"
+          onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
+          disabled={safePage >= pageCount}
+          aria-label="Next page"
+        >
+          <ChevronRight className="h-4 w-4" />
+        </button>
+      </div>
+    </div>
+  );
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
@@ -251,6 +305,7 @@ export function ExpenseTable({ expenses, splits, profiles, categories, batches }
       </div>
 
       <div className="card overflow-hidden p-0">
+        {paginationBar("top")}
         <table className="hidden md:table min-w-full text-sm">
           <thead className="bg-slate-50">
             <tr>
@@ -398,51 +453,7 @@ export function ExpenseTable({ expenses, splits, profiles, categories, batches }
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 px-4 py-3 text-sm text-slate-600 bg-white">
-          <div>
-            Showing {firstVisibleIdx}–{lastVisibleIdx} of {totalRows}
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <label className="flex items-center gap-1.5">
-              <span className="text-xs text-slate-500">Rows</span>
-              <select
-                className="input !w-auto !py-1.5 !px-2 text-sm"
-                value={String(pageSize)}
-                onChange={(e) => {
-                  const v = e.target.value;
-                  setPageSize(v === "all" ? "all" : (Number(v) as PageSize));
-                }}
-              >
-                {PAGE_SIZES.map((s) => (
-                  <option key={String(s)} value={String(s)}>
-                    {s === "all" ? "All" : s}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <button
-              type="button"
-              className="btn-secondary !py-1.5 !px-2.5 text-sm"
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              disabled={safePage <= 1}
-              aria-label="Previous page"
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </button>
-            <span className="text-xs text-slate-500">
-              Page {safePage} of {pageCount}
-            </span>
-            <button
-              type="button"
-              className="btn-secondary !py-1.5 !px-2.5 text-sm"
-              onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
-              disabled={safePage >= pageCount}
-              aria-label="Next page"
-            >
-              <ChevronRight className="h-4 w-4" />
-            </button>
-          </div>
-        </div>
+        {paginationBar("bottom")}
       </div>
 
       {detailExpenseId &&

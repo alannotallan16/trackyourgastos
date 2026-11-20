@@ -109,6 +109,13 @@ export async function getSettlementBatchResults(): Promise<SettlementBatchResult
   );
 }
 
+export async function getSettlementBatchItems(): Promise<SettlementBatchItem[]> {
+  const supabase = createClient();
+  return fetchAll<SettlementBatchItem>(() =>
+    supabase.from("settlement_batch_items").select("*") as unknown as QueryBuilder<SettlementBatchItem>
+  );
+}
+
 export async function getSettlementPayments(): Promise<SettlementPayment[]> {
   const supabase = createClient();
   return fetchAll<SettlementPayment>(() =>

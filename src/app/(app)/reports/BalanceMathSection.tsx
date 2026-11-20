@@ -163,6 +163,51 @@ export function BalanceMathSection({ report }: { report: BalanceMathReport }) {
           </p>
         )}
       </div>
+
+      {/* Write-side check: can we rederive each batch's results from its items? */}
+      <div className="border-t border-slate-100 px-5 py-3">
+        <h3 className="text-sm font-semibold text-brand-navy">Batch creation integrity</h3>
+        <p className="text-xs text-slate-500">
+          For each batch, do the stored <code>settlement_batch_results</code> match what
+          <code> createSettlementBatch</code> would generate right now from its items snapshot?
+          A mismatch here means either the batch was created by an older (buggy) code path or
+          its results were edited by hand.
+        </p>
+        {report.batch_recompute_issues.length === 0 ? (
+          <p className="mt-2 text-sm text-brand-green">
+            Every batch's stored results match what we'd regenerate from its items.
+          </p>
+        ) : (
+          <ul className="mt-2 space-y-2 text-sm">
+            {report.batch_recompute_issues.map((row) => (
+              <li
+                key={row.id}
+                className="rounded-xl border border-amber-200 bg-amber-50/60 px-3 py-2"
+              >
+                <div className="flex items-center justify-between gap-2 text-sm text-amber-900">
+                  <Link
+                    href={`/settlements/${row.id}`}
+                    className="font-semibold hover:underline"
+                  >
+                    {row.settlement_number}
+                  </Link>
+                  <span className="text-xs text-amber-700">{row.status}</span>
+                </div>
+                <ul className="mt-1 list-disc list-inside text-xs text-amber-900/90 space-y-0.5">
+                  {row.issues.map((i, k) => (
+                    <li key={k}>
+                      <span className="uppercase text-[10px] tracking-wide font-semibold mr-1 text-amber-700">
+                        {i.kind.replace(/_/g, " ")}
+                      </span>
+                      {i.note}
+                    </li>
+                  ))}
+                </ul>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
     </section>
   );
 }

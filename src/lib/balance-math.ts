@@ -3,9 +3,11 @@ import type {
   ExpenseSplit,
   Profile,
   SettlementBatch,
+  SettlementBatchItem,
   SettlementBatchResult,
   SettlementPayment
 } from "./types";
+import { computeBalances, settlementSuggestions } from "./balances";
 
 export interface UserMathRow {
   user_id: string;
@@ -31,6 +33,26 @@ export interface BatchPaymentCheck {
   discrepancy: number; // claimed - recorded
 }
 
+export interface BatchRecomputeIssue {
+  id: string;
+  settlement_number: string;
+  kind:
+    | "amount_mismatch"
+    | "missing_result"
+    | "extra_result"
+    | "no_items";
+  note: string;
+}
+
+export interface BatchRecomputeRow {
+  id: string;
+  settlement_number: string;
+  status: string;
+  stored_results: { from_user_id: string; to_user_id: string; amount: number }[];
+  expected_results: { from_user_id: string; to_user_id: string; amount: number }[];
+  issues: BatchRecomputeIssue[];
+}
+
 export interface BalanceMathReport {
   users: UserMathRow[];
   // Household-level rollups the user can cross-check against Reports.
@@ -45,6 +67,11 @@ export interface BalanceMathReport {
   // we strip settlement payments from the calculation? Non-zero means the
   // code is counting them.
   settlement_impact: { user_id: string; display_name: string; delta: number }[];
+  // Write-side check: does each batch's stored settlement_batch_results match
+  // what createSettlementBatch would generate from its items today? If a
+  // batch's items / expenses are internally consistent but the results don't
+  // match, the batch was created with buggy code or edited by hand.
+  batch_recompute_issues: BatchRecomputeRow[];
 }
 
 const R = (n: number) => Math.round(n * 100) / 100;
@@ -55,7 +82,8 @@ export function auditBalanceMath(
   splits: ExpenseSplit[],
   batches: SettlementBatch[],
   batchResults: SettlementBatchResult[],
-  payments: SettlementPayment[]
+  payments: SettlementPayment[],
+  batchItems: SettlementBatchItem[] = []
 ): BalanceMathReport {
   const resultById = new Map(batchResults.map((r) => [r.id, r]));
 
@@ -137,6 +165,128 @@ export function auditBalanceMath(
     }
   }
 
+  // --------------------------------------------------------------------------
+  // Batch recompute: for each batch, derive the expected settlement_batch_results
+  // from its items (which are a snapshot of the expense_splits at batch
+  // creation time) and compare to what's stored. The reviewer's write-side
+  // check.
+  //
+  // We rely on the items already being snapshotted — that's the point of the
+  // settlement_batch_items table — so we don't go back to `splits` for this.
+  // Items carry (expense_id, user_id, share_amount). We look up each expense's
+  // total_amount + paid_by_user_id to compute paid vs. share per user inside
+  // the batch's expense subset, then run the same greedy matcher
+  // createSettlementBatch uses.
+  // --------------------------------------------------------------------------
+  const expensesById = new Map(expenses.map((e) => [e.id, e]));
+  const itemsByBatch = new Map<string, SettlementBatchItem[]>();
+  for (const it of batchItems) {
+    if (!itemsByBatch.has(it.settlement_batch_id)) itemsByBatch.set(it.settlement_batch_id, []);
+    itemsByBatch.get(it.settlement_batch_id)!.push(it);
+  }
+
+  const batch_recompute_issues: BatchRecomputeRow[] = [];
+  for (const b of batches) {
+    if (b.status === "cancelled") continue;
+    const items = itemsByBatch.get(b.id) ?? [];
+    const stored = (resultsByBatch.get(b.id) ?? []).map((r) => ({
+      from_user_id: r.from_user_id,
+      to_user_id: r.to_user_id,
+      amount: Number(r.amount)
+    }));
+
+    if (items.length === 0) {
+      // Unknown — can't recompute. Report once so it's visible.
+      batch_recompute_issues.push({
+        id: b.id,
+        settlement_number: b.settlement_number,
+        status: b.status,
+        stored_results: stored,
+        expected_results: [],
+        issues: [
+          {
+            id: b.id,
+            settlement_number: b.settlement_number,
+            kind: "no_items",
+            note: "Batch has no items snapshot; can't recompute expected results."
+          }
+        ]
+      });
+      continue;
+    }
+
+    // Build the per-user paid / owed inside this batch's expense subset.
+    const expenseIds = Array.from(new Set(items.map((i) => i.expense_id)));
+    const batchExpenses = expenseIds
+      .map((eid) => expensesById.get(eid))
+      .filter((x): x is Expense => !!x);
+    const batchSplits: ExpenseSplit[] = items.map((it) => ({
+      id: `virt-${it.id}`,
+      expense_id: it.expense_id,
+      user_id: it.user_id,
+      split_type: "fixed",
+      percentage: null,
+      fixed_amount: null,
+      calculated_amount: Number(it.share_amount),
+      settlement_status: "in_settlement",
+      settlement_batch_id: b.id,
+      settled_at: null
+    }));
+    const balances = computeBalances(profiles, batchExpenses, batchSplits, [], []);
+    const expected = settlementSuggestions(balances).map((s) => ({
+      from_user_id: s.from_user_id,
+      to_user_id: s.to_user_id,
+      amount: R(s.amount)
+    }));
+
+    // Compare stored vs expected. Simple pair-based keying.
+    const key = (r: { from_user_id: string; to_user_id: string }) =>
+      `${r.from_user_id}→${r.to_user_id}`;
+    const storedByKey = new Map(stored.map((r) => [key(r), r]));
+    const expectedByKey = new Map(expected.map((r) => [key(r), r]));
+
+    const issues: BatchRecomputeIssue[] = [];
+    for (const [k, e] of expectedByKey) {
+      const s = storedByKey.get(k);
+      if (!s) {
+        issues.push({
+          id: b.id,
+          settlement_number: b.settlement_number,
+          kind: "missing_result",
+          note: `Expected a ${k} result for ${formatPeso(e.amount)}; none stored.`
+        });
+      } else if (Math.abs(s.amount - e.amount) > 0.01) {
+        issues.push({
+          id: b.id,
+          settlement_number: b.settlement_number,
+          kind: "amount_mismatch",
+          note: `${k}: stored ${formatPeso(s.amount)} vs expected ${formatPeso(e.amount)}.`
+        });
+      }
+    }
+    for (const [k, s] of storedByKey) {
+      if (!expectedByKey.has(k)) {
+        issues.push({
+          id: b.id,
+          settlement_number: b.settlement_number,
+          kind: "extra_result",
+          note: `Stored a ${k} result for ${formatPeso(s.amount)}; no matching expected row.`
+        });
+      }
+    }
+
+    if (issues.length > 0) {
+      batch_recompute_issues.push({
+        id: b.id,
+        settlement_number: b.settlement_number,
+        status: b.status,
+        stored_results: stored,
+        expected_results: expected,
+        issues
+      });
+    }
+  }
+
   // Household rollups.
   const sum_paid = R(users.reduce((a, u) => a + u.paid, 0));
   const sum_share = R(users.reduce((a, u) => a + u.owed, 0));
@@ -161,6 +311,11 @@ export function auditBalanceMath(
     sum_net,
     batches_by_status,
     batch_payment_mismatches,
-    settlement_impact
+    settlement_impact,
+    batch_recompute_issues
   };
+}
+
+function formatPeso(n: number): string {
+  return `₱${n.toFixed(2)}`;
 }

@@ -72,19 +72,6 @@ export default async function DashboardPage() {
   const me = user ? profiles.find((p) => p.id === user.id) ?? null : null;
   const others = me ? profiles.filter((p) => p.id !== me.id) : [];
 
-  // Per-user split rollup, limited to current signed-in person, so the hero
-  // can show "unsettled vs in settlement" for them specifically.
-  let unsettledShare = 0;
-  let inSettlementShare = 0;
-  if (me) {
-    for (const s of splits) {
-      if (s.user_id !== me.id) continue;
-      const amt = Number(s.calculated_amount);
-      if (s.settlement_status === "unpaid") unsettledShare += amt;
-      else if (s.settlement_status === "in_settlement") inSettlementShare += amt;
-    }
-  }
-
   // Household-level unsettled snapshot for the Settle Up card's nudge.
   const splitsByExpense = new Map<string, typeof splits>();
   for (const s of splits) {
@@ -141,13 +128,7 @@ export default async function DashboardPage() {
       <BalanceIntegrityBanner report={integrity} />
 
       {me ? (
-        <YourBalanceHero
-          me={me}
-          others={others}
-          balances={balances}
-          unsettledShare={Math.round(unsettledShare * 100) / 100}
-          inSettlementShare={Math.round(inSettlementShare * 100) / 100}
-        />
+        <YourBalanceHero me={me} others={others} balances={balances} />
       ) : (
         // Fallback when the signed-in auth user isn't linked to a profile yet.
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">

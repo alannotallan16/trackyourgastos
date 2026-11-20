@@ -4,9 +4,17 @@ import { useMemo, useState } from "react";
 import { ChartCard } from "@/components/ui/ChartCard";
 import { CategoryPie } from "@/components/DashboardCharts";
 import { CHART_COLORS } from "@/lib/chart-colors";
+import { formatMoney } from "@/lib/format";
 import type { Category, Expense } from "@/lib/types";
 
 type PeriodKey = "this_month" | "last_month" | "last_3_months" | "ytd" | "all_time";
+type ShowMode = "percent" | "amount" | "both";
+
+const SHOW_MODES: { key: ShowMode; label: string }[] = [
+  { key: "percent", label: "Percentage" },
+  { key: "amount", label: "Amount" },
+  { key: "both", label: "Both" }
+];
 
 const PERIODS: { key: PeriodKey; label: string; short: string }[] = [
   { key: "this_month", label: "This month", short: "Month" },
@@ -69,6 +77,7 @@ interface Props {
 
 export function CategoryByPeriodCard({ expenses, categories }: Props) {
   const [period, setPeriod] = useState<PeriodKey>("this_month");
+  const [showMode, setShowMode] = useState<ShowMode>("percent");
 
   const { from, to, subtitle } = useMemo(() => periodRange(period), [period]);
 
@@ -93,36 +102,60 @@ export function CategoryByPeriodCard({ expenses, categories }: Props) {
       title="By category"
       subtitle={subtitle}
       action={
-        <select
-          aria-label="Period"
-          value={period}
-          onChange={(e) => setPeriod(e.target.value as PeriodKey)}
-          className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-brand-navy focus:border-brand-green focus:outline-none focus:ring-2 focus:ring-brand-green/30"
-        >
-          {PERIODS.map((p) => (
-            <option key={p.key} value={p.key}>
-              {p.label}
-            </option>
-          ))}
-        </select>
+        <div className="flex flex-wrap items-center gap-1.5">
+          <select
+            aria-label="Period"
+            value={period}
+            onChange={(e) => setPeriod(e.target.value as PeriodKey)}
+            className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-brand-navy focus:border-brand-green focus:outline-none focus:ring-2 focus:ring-brand-green/30"
+          >
+            {PERIODS.map((p) => (
+              <option key={p.key} value={p.key}>
+                {p.label}
+              </option>
+            ))}
+          </select>
+          <select
+            aria-label="Show"
+            value={showMode}
+            onChange={(e) => setShowMode(e.target.value as ShowMode)}
+            className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-brand-navy focus:border-brand-green focus:outline-none focus:ring-2 focus:ring-brand-green/30"
+          >
+            {SHOW_MODES.map((m) => (
+              <option key={m.key} value={m.key}>
+                {m.label}
+              </option>
+            ))}
+          </select>
+        </div>
       }
       legend={
         catData.length === 0 ? null : (
           <ul className="space-y-1.5 text-sm">
-            {catData.map((d, i) => (
-              <li key={d.name} className="flex items-center justify-between gap-2">
-                <span className="flex items-center gap-2 min-w-0">
-                  <span
-                    className="h-2.5 w-2.5 shrink-0 rounded-full"
-                    style={{ background: CHART_COLORS[i % CHART_COLORS.length] }}
-                  />
-                  <span className="truncate text-slate-600">{d.name}</span>
-                </span>
-                <span className="tabular-nums text-xs text-slate-500">
-                  {catSum > 0 ? `${Math.round((d.value / catSum) * 100)}%` : "0%"}
-                </span>
-              </li>
-            ))}
+            {catData.map((d, i) => {
+              const pct = catSum > 0 ? Math.round((d.value / catSum) * 100) : 0;
+              return (
+                <li key={d.name} className="flex items-center justify-between gap-2">
+                  <span className="flex items-center gap-2 min-w-0">
+                    <span
+                      className="h-2.5 w-2.5 shrink-0 rounded-full"
+                      style={{ background: CHART_COLORS[i % CHART_COLORS.length] }}
+                    />
+                    <span className="truncate text-slate-600">{d.name}</span>
+                  </span>
+                  <span className="tabular-nums text-xs text-slate-500 whitespace-nowrap">
+                    {showMode === "percent" && `${pct}%`}
+                    {showMode === "amount" && formatMoney(d.value)}
+                    {showMode === "both" && (
+                      <>
+                        {formatMoney(d.value)}{" "}
+                        <span className="text-slate-400">({pct}%)</span>
+                      </>
+                    )}
+                  </span>
+                </li>
+              );
+            })}
           </ul>
         )
       }

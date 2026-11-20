@@ -9,10 +9,6 @@ interface Props {
   me: Profile;
   others: Profile[];
   balances: UserBalance[];
-  /** Sum of the user's unsettled expense shares. */
-  unsettledShare: number;
-  /** Sum of the user's shares currently inside an open settlement batch. */
-  inSettlementShare: number;
 }
 
 /**
@@ -26,7 +22,7 @@ interface Props {
  * The other two household members' nets drop down to a compact row underneath
  * so the picture of the whole house is still one glance away.
  */
-export function YourBalanceHero({ me, others, balances, unsettledShare, inSettlementShare }: Props) {
+export function YourBalanceHero({ me, others, balances }: Props) {
   const myBalance = balances.find((b) => b.user_id === me.id);
   const net = myBalance?.net ?? 0;
   const absNet = Math.abs(net);
@@ -62,12 +58,20 @@ export function YourBalanceHero({ me, others, balances, unsettledShare, inSettle
 
           {!settled && counterparties.length > 0 && (
             <ul className="mt-2 text-sm text-slate-600 space-y-0.5">
-              {counterparties.map((c) => (
-                <li key={c.user_id}>
-                  {owed ? "from" : "to"} <strong className="text-brand-navy">{c.name}</strong>{" "}
-                  <span className="tabular-nums text-slate-500">· {formatMoney(c.amount)}</span>
+              {counterparties.length === 1 ? (
+                // Only one counterparty — don't re-print the already-huge headline amount
+                // next to their name. Just name them.
+                <li>
+                  {owed ? "from" : "to"} <strong className="text-brand-navy">{counterparties[0].name}</strong>
                 </li>
-              ))}
+              ) : (
+                counterparties.map((c) => (
+                  <li key={c.user_id}>
+                    {owed ? "from" : "to"} <strong className="text-brand-navy">{c.name}</strong>{" "}
+                    <span className="tabular-nums text-slate-500">· {formatMoney(c.amount)}</span>
+                  </li>
+                ))
+              )}
             </ul>
           )}
           {settled && (
@@ -76,28 +80,12 @@ export function YourBalanceHero({ me, others, balances, unsettledShare, inSettle
             </p>
           )}
 
-          {(unsettledShare > 0.005 || inSettlementShare > 0.005) && (
-            <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500">
-              <span>
-                Unsettled share{" "}
-                <strong className="tabular-nums text-brand-navy">{formatMoney(unsettledShare)}</strong>
-              </span>
-              <span>
-                In open settlements{" "}
-                <strong className="tabular-nums text-brand-navy">{formatMoney(inSettlementShare)}</strong>
-              </span>
-            </div>
-          )}
-
           <div className="mt-4 flex flex-wrap gap-2">
+            {/* One primary CTA, only when the signed-in user owes money. When they're
+                the creditor they can't force anyone to pay, so there's nothing to do here. */}
             {owe && (
               <Link href="/settlements" className="btn-primary text-sm">
                 Record payment
-              </Link>
-            )}
-            {owed && (
-              <Link href="/settlements" className="btn-primary text-sm">
-                Create settlement
               </Link>
             )}
             <Link href="/expenses" className="btn-secondary text-sm">

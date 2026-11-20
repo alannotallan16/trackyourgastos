@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
 import type { Profile, SettlementBatch, SettlementBatchResult } from "@/lib/types";
 import type { DebtSuggestion } from "@/lib/balances";
 import { formatDate, formatMoney } from "@/lib/format";
@@ -20,6 +21,8 @@ interface Props {
   /** The signed-in user's id, for "<You>" phrasing. Optional. */
   meId?: string;
 }
+
+const COLLAPSED_ROWS = 2;
 
 /**
  * The next-step card. Combines three overlapping concerns the old dashboard
@@ -55,17 +58,51 @@ export function SettleUpCard({
   const nothingPending =
     suggestions.length === 0 && openBatches.length === 0 && unsettledCount === 0;
 
+  // Compact-by-default: show at most COLLAPSED_ROWS rows per section, then a
+  // "See all N" toggle. Keeps the card around the same vertical footprint as
+  // the old "Who owes who" box.
+  const [expandedSuggestions, setExpandedSuggestions] = useState(false);
+  const [expandedBatches, setExpandedBatches] = useState(false);
+  const shownSuggestions = expandedSuggestions ? suggestions : suggestions.slice(0, COLLAPSED_ROWS);
+  // Sort open batches oldest first — those are the ones that need attention first.
+  const openBatchesSorted = [...openBatches].sort((a, b) =>
+    a.created_at.localeCompare(b.created_at)
+  );
+  const shownBatches = expandedBatches
+    ? openBatchesSorted
+    : openBatchesSorted.slice(0, COLLAPSED_ROWS);
+
+  // Match each suggestion (from_user_id, to_user_id) to the oldest open or
+  // partially_paid batch_result with the same from/to pair. That's the row the
+  // user should record the payment against — otherwise the open batch stays
+  // "partially_paid" forever while a fresh batch records the money.
+  function matchingOpenBatchId(fromId: string, toId: string): string | null {
+    const candidates = batchResults
+      .filter(
+        (r) =>
+          r.from_user_id === fromId &&
+          r.to_user_id === toId &&
+          (r.status === "open" || r.status === "partially_paid")
+      )
+      .map((r) => {
+        const batch = batches.find((b) => b.id === r.settlement_batch_id);
+        return { result: r, created_at: batch?.created_at ?? "9999" };
+      })
+      .sort((a, b) => a.created_at.localeCompare(b.created_at));
+    return candidates[0]?.result.settlement_batch_id ?? null;
+  }
+
   return (
     <section className="card p-0 overflow-hidden">
       <header className="flex items-center justify-between gap-3 px-5 py-3 border-b border-slate-100">
         <div>
           <h2 className="text-sm font-semibold text-brand-navy">Settle up</h2>
           <p className="text-xs text-slate-500">
-            Suggested payments, open settlement batches, and unsettled expenses — in one place.
+            This is everything still owed, including what's left in any open settlement batches.
           </p>
         </div>
-        <Link href="/settlements" className="btn-primary text-sm">
-          Open settlements
+        <Link href="/settlements" className="btn-secondary text-sm">
+          All settlements
         </Link>
       </header>
 
@@ -82,11 +119,12 @@ export function SettleUpCard({
                 Suggested payments
               </h3>
               <ul className="space-y-1.5">
-                {suggestions.map((s, i) => {
+                {shownSuggestions.map((s, i) => {
                   const fromName = profilesById.get(s.from_user_id)?.display_name ?? "—";
                   const toName = profilesById.get(s.to_user_id)?.display_name ?? "—";
                   const youFrom = meId && s.from_user_id === meId;
                   const youTo = meId && s.to_user_id === meId;
+                  const matchedBatchId = matchingOpenBatchId(s.from_user_id, s.to_user_id);
                   return (
                     <li
                       key={i}
@@ -105,17 +143,39 @@ export function SettleUpCard({
                         <span className="tabular-nums font-semibold text-brand-navy">
                           {formatMoney(s.amount)}
                         </span>
-                        <Link
-                          href="/settlements"
-                          className="text-xs font-medium text-brand-green hover:underline"
-                        >
-                          Record
-                        </Link>
+                        {matchedBatchId ? (
+                          <Link
+                            href={`/settlements/${matchedBatchId}`}
+                            className="text-xs font-medium text-brand-green hover:underline"
+                            title="Open the earliest matching settlement batch to record a payment against it."
+                          >
+                            Record
+                          </Link>
+                        ) : (
+                          <Link
+                            href="/settlements"
+                            className="text-xs font-medium text-brand-blue hover:underline"
+                            title="No open batch for this pair yet — create a new settlement first."
+                          >
+                            Create batch
+                          </Link>
+                        )}
                       </span>
                     </li>
                   );
                 })}
               </ul>
+              {suggestions.length > COLLAPSED_ROWS && (
+                <button
+                  type="button"
+                  onClick={() => setExpandedSuggestions((v) => !v)}
+                  className="mt-2 text-xs font-medium text-brand-green hover:underline"
+                >
+                  {expandedSuggestions
+                    ? "Show fewer"
+                    : `See all ${suggestions.length} suggested payments`}
+                </button>
+              )}
             </section>
           )}
 
@@ -126,7 +186,7 @@ export function SettleUpCard({
                 Open settlement batches
               </h3>
               <ul className="space-y-1.5">
-                {openBatches.map((b) => {
+                {shownBatches.map((b) => {
                   const rs = resultsByBatch.get(b.id) ?? [];
                   const total = rs.reduce((a, r) => a + Number(r.amount), 0);
                   const paid = rs.reduce((a, r) => a + Number(r.amount_paid), 0);
@@ -168,6 +228,17 @@ export function SettleUpCard({
                   );
                 })}
               </ul>
+              {openBatches.length > COLLAPSED_ROWS && (
+                <button
+                  type="button"
+                  onClick={() => setExpandedBatches((v) => !v)}
+                  className="mt-2 text-xs font-medium text-brand-green hover:underline"
+                >
+                  {expandedBatches
+                    ? "Show fewer"
+                    : `See all ${openBatches.length} open batches`}
+                </button>
+              )}
             </section>
           )}
 

@@ -188,8 +188,8 @@ export default async function BatchDetailPage({ params }: { params: { id: string
                           const proofUrl = attachmentUrls.get(p.id);
                           return (
                             <li key={p.id} className="px-3 py-2 text-xs">
-                              <div className="flex items-center justify-between gap-3">
-                                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 min-w-0">
+                              <div className="flex items-center gap-3">
+                                <div className="flex items-center gap-x-3 flex-wrap shrink-0">
                                   <span className="text-slate-600 whitespace-nowrap">{formatDate(p.payment_date)}</span>
                                   <span className="font-semibold tabular-nums whitespace-nowrap text-brand-navy">
                                     {formatMoney(Number(p.amount), p.currency)}
@@ -197,7 +197,16 @@ export default async function BatchDetailPage({ params }: { params: { id: string
                                   {p.payment_method && <span className="text-slate-500 whitespace-nowrap">{p.payment_method}</span>}
                                   {p.reference_number && <span className="text-slate-500 whitespace-nowrap">#{p.reference_number}</span>}
                                 </div>
-                                <span className="flex items-center gap-2 shrink-0">
+                                {/* Notes fill the horizontal gap on sm+. Dropped below on narrow screens. */}
+                                {p.notes && (
+                                  <span
+                                    title={p.notes}
+                                    className="hidden sm:block text-slate-500 truncate flex-1 min-w-0 border-l border-slate-200 pl-3"
+                                  >
+                                    {p.notes}
+                                  </span>
+                                )}
+                                <span className={`flex items-center gap-2 shrink-0 ${p.notes ? "sm:ml-0 ml-auto" : "ml-auto"}`}>
                                   {proofUrl && (
                                     <a
                                       href={proofUrl}
@@ -216,7 +225,7 @@ export default async function BatchDetailPage({ params }: { params: { id: string
                                 </span>
                               </div>
                               {p.notes && (
-                                <p className="mt-1 text-slate-500 text-xs break-words">{p.notes}</p>
+                                <p className="sm:hidden mt-1 text-slate-500 text-xs break-words">{p.notes}</p>
                               )}
                             </li>
                           );

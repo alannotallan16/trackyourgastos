@@ -15,6 +15,7 @@ import { CategoryByPeriodCard } from "@/components/CategoryByPeriodCard";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { StatCard } from "@/components/ui/StatCard";
 import { ChartCard } from "@/components/ui/ChartCard";
+import { NavButton } from "@/components/ui/NavButton";
 import { Badge, colorForCategory } from "@/components/ui/Badge";
 import { ArrowLeftRight, ArrowRight, Plus, TrendingUp, Users, Wallet } from "@/components/ui/icons";
 
@@ -71,10 +72,10 @@ export default async function DashboardPage() {
         title="Dashboard"
         subtitle={`${now.toLocaleString("en-PH", { month: "long", year: "numeric" })}`}
         actions={
-          <Link href="/expenses/new" className="btn-primary text-sm">
+          <NavButton href="/expenses/new" loadingLabel="Opening…">
             <Plus className="h-4 w-4" />
             Add expense
-          </Link>
+          </NavButton>
         }
       />
 

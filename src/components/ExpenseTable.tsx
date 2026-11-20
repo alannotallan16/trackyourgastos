@@ -326,7 +326,7 @@ export function ExpenseTable({ expenses, splits, profiles, categories, batches }
           </button>
         )}
       </div>
-      <div className={`card grid grid-cols-2 md:grid-cols-6 gap-2 ${filtersOpen ? "" : "hidden"} md:grid`}>
+      <div className={`card grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2 ${filtersOpen ? "" : "hidden"} md:grid`}>
         <DateField value={from} onChange={(e) => setFrom(e.target.value)} placeholder="From" aria-label="From date" />
         <DateField value={to} onChange={(e) => setTo(e.target.value)} placeholder="To" aria-label="To date" />
         <select className="input" value={paidBy} onChange={(e) => setPaidBy(e.target.value)}>
@@ -358,7 +358,8 @@ export function ExpenseTable({ expenses, splits, profiles, categories, batches }
 
       <div className="card overflow-hidden p-0">
         {paginationBar("top")}
-        <table className="hidden md:table min-w-full text-sm">
+        <div className="hidden md:block overflow-x-auto">
+        <table className="min-w-full md:min-w-max text-sm">
           <thead className="bg-slate-50">
             <tr>
               {sortableHeader("date", "Date")}
@@ -447,6 +448,7 @@ export function ExpenseTable({ expenses, splits, profiles, categories, batches }
             </tr>
           </tfoot>
         </table>
+        </div>
 
         {/* Mobile card list */}
         <div className="md:hidden divide-y divide-slate-100">

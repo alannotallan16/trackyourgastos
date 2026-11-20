@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { ExpenseTable } from "@/components/ExpenseTable";
 import {
   getCategories,
@@ -8,6 +7,7 @@ import {
   getSettlementBatches
 } from "@/lib/data";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { NavButton } from "@/components/ui/NavButton";
 import { Camera, Plus } from "@/components/ui/icons";
 
 export const dynamic = "force-dynamic";
@@ -26,14 +26,14 @@ export default async function ExpensesPage() {
         title="Expenses"
         actions={
           <>
-            <Link href="/expenses/scan" className="btn-secondary text-sm">
+            <NavButton href="/expenses/scan" className="btn-secondary text-sm" loadingLabel="Opening…">
               <Camera className="h-4 w-4" />
               Scan
-            </Link>
-            <Link href="/expenses/new" className="btn-primary text-sm">
+            </NavButton>
+            <NavButton href="/expenses/new" loadingLabel="Opening…">
               <Plus className="h-4 w-4" />
               Add expense
-            </Link>
+            </NavButton>
           </>
         }
       />

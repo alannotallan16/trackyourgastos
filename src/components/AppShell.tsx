@@ -32,15 +32,30 @@ const NAV = [
   { href: "/settings", label: "Settings", Icon: Settings }
 ] as const;
 
-function initials(email?: string | null) {
-  if (!email) return "?";
-  const local = email.split("@")[0] ?? "";
-  const parts = local.split(/[._-]/).filter(Boolean);
-  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
-  return (local.slice(0, 2) || "?").toUpperCase();
+function initialsFromName(name?: string | null, fallback?: string | null) {
+  if (name) {
+    const parts = name.split(/\s+/).filter(Boolean);
+    if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+    return (parts[0]?.slice(0, 2) || "?").toUpperCase();
+  }
+  if (fallback) {
+    const local = fallback.split("@")[0] ?? "";
+    const parts = local.split(/[._-]/).filter(Boolean);
+    if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+    return (local.slice(0, 2) || "?").toUpperCase();
+  }
+  return "?";
 }
 
-export function AppShell({ children, userEmail }: { children: React.ReactNode; userEmail?: string | null }) {
+export function AppShell({
+  children,
+  userEmail,
+  userDisplayName
+}: {
+  children: React.ReactNode;
+  userEmail?: string | null;
+  userDisplayName?: string | null;
+}) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
 
@@ -81,10 +96,15 @@ export function AppShell({ children, userEmail }: { children: React.ReactNode; u
           <div className="rounded-xl border border-white/5 bg-white/[0.04] px-3 py-3">
             <div className="flex items-center gap-3">
               <div className="flex h-9 w-9 items-center justify-center rounded-full bg-brand-gradient text-sm font-semibold text-white">
-                {initials(userEmail)}
+                {initialsFromName(userDisplayName, userEmail)}
               </div>
               <div className="min-w-0 flex-1">
-                <div className="text-xs font-medium text-white truncate">{userEmail ?? "—"}</div>
+                <div className="text-sm font-medium text-white truncate">
+                  {userDisplayName ?? userEmail ?? "—"}
+                </div>
+                {userDisplayName && userEmail && (
+                  <div className="text-[10px] text-slate-400 truncate">{userEmail}</div>
+                )}
               </div>
               <form action="/auth/signout" method="post">
                 <button

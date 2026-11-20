@@ -262,11 +262,11 @@ export function CreateBatchModal({ open, onClose, profiles, expenses, splits, ca
           <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
             <div>
               <label className="label">From date</label>
-              <DateField value={filterFrom} onChange={(e) => setFilterFrom(e.target.value)} placeholder="From date" />
+              <DateField value={filterFrom} onChange={(e) => setFilterFrom(e.target.value)} placeholder="mm/dd/yyyy" />
             </div>
             <div>
               <label className="label">To date</label>
-              <DateField value={filterTo} onChange={(e) => setFilterTo(e.target.value)} placeholder="To date" />
+              <DateField value={filterTo} onChange={(e) => setFilterTo(e.target.value)} placeholder="mm/dd/yyyy" />
             </div>
             <div>
               <label className="label">Category</label>

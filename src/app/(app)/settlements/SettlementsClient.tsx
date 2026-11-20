@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { formatDate, formatMoney } from "@/lib/format";
 import type {
   Category,
@@ -42,6 +42,12 @@ export function SettlementsClient({
   const router = useRouter();
   const profilesById = useMemo(() => new Map(profiles.map((p) => [p.id, p])), [profiles]);
   const [open, setOpen] = useState(false);
+  const [, startTransition] = useTransition();
+  const [pendingBatchId, setPendingBatchId] = useState<string | null>(null);
+  const navigateToBatch = (id: string) => {
+    setPendingBatchId(id);
+    startTransition(() => router.push(`/settlements/${id}`));
+  };
 
   // Aggregate results per batch for the list view.
   const resultsByBatch = useMemo(() => {
@@ -145,11 +151,13 @@ export function SettlementsClient({
               <tbody>
                 {openBatches.map((b) => {
                   const t = batchTotals(b.id);
+                  const isPending = pendingBatchId === b.id;
                   return (
                     <tr
                       key={b.id}
-                      onClick={() => router.push(`/settlements/${b.id}`)}
-                      className="hover:bg-slate-50 cursor-pointer transition-colors"
+                      onClick={() => navigateToBatch(b.id)}
+                      className={`cursor-pointer transition-colors ${isPending ? "bg-emerald-50 opacity-70" : "hover:bg-slate-50"}`}
+                      aria-busy={isPending}
                     >
                       <td className="table-cell">
                         <Link className="font-medium text-brand-navy hover:text-brand-green" href={`/settlements/${b.id}`}>
@@ -171,11 +179,15 @@ export function SettlementsClient({
               {openBatches.map((b) => {
                 const t = batchTotals(b.id);
                 const pct = t.total > 0 ? Math.min(100, Math.round((t.paid / t.total) * 100)) : 0;
+                const isPending = pendingBatchId === b.id;
                 return (
                   <Link
                     key={b.id}
                     href={`/settlements/${b.id}`}
-                    className="block px-4 py-3 hover:bg-slate-50 active:bg-slate-100"
+                    prefetch
+                    onClick={() => setPendingBatchId(b.id)}
+                    className={`block px-4 py-3 transition-colors ${isPending ? "bg-emerald-50 opacity-70" : "hover:bg-slate-50 active:bg-slate-100"}`}
+                    aria-busy={isPending}
                   >
                     <div className="flex items-center justify-between gap-3">
                       <div className="flex items-center gap-2 min-w-0">
@@ -229,11 +241,13 @@ export function SettlementsClient({
               <tbody>
                 {historyBatches.map((b) => {
                   const t = batchTotals(b.id);
+                  const isPending = pendingBatchId === b.id;
                   return (
                     <tr
                       key={b.id}
-                      onClick={() => router.push(`/settlements/${b.id}`)}
-                      className="hover:bg-slate-50 cursor-pointer transition-colors"
+                      onClick={() => navigateToBatch(b.id)}
+                      className={`cursor-pointer transition-colors ${isPending ? "bg-emerald-50 opacity-70" : "hover:bg-slate-50"}`}
+                      aria-busy={isPending}
                     >
                       <td className="table-cell">
                         <Link className="font-medium text-brand-navy hover:text-brand-green" href={`/settlements/${b.id}`}>
@@ -252,11 +266,15 @@ export function SettlementsClient({
             <div className="md:hidden divide-y divide-slate-100">
               {historyBatches.map((b) => {
                 const t = batchTotals(b.id);
+                const isPending = pendingBatchId === b.id;
                 return (
                   <Link
                     key={b.id}
                     href={`/settlements/${b.id}`}
-                    className="block px-4 py-3 hover:bg-slate-50 active:bg-slate-100"
+                    prefetch
+                    onClick={() => setPendingBatchId(b.id)}
+                    className={`block px-4 py-3 transition-colors ${isPending ? "bg-emerald-50 opacity-70" : "hover:bg-slate-50 active:bg-slate-100"}`}
+                    aria-busy={isPending}
                   >
                     <div className="flex items-center justify-between gap-3">
                       <div className="flex items-center gap-2 min-w-0">

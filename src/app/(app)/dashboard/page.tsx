@@ -10,11 +10,12 @@ import {
 } from "@/lib/data";
 import { computeBalances, settlementSuggestions } from "@/lib/balances";
 import { formatMoney, formatDate } from "@/lib/format";
-import { CategoryPie, MonthlyTrendChart, PaidByBar } from "@/components/DashboardCharts";
-import { CHART_COLORS } from "@/lib/chart-colors";
+import { MonthlyTrendChart, PaidByBar } from "@/components/DashboardCharts";
+import { CategoryByPeriodCard } from "@/components/CategoryByPeriodCard";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { StatCard } from "@/components/ui/StatCard";
 import { ChartCard } from "@/components/ui/ChartCard";
+import { NavButton } from "@/components/ui/NavButton";
 import { Badge, colorForCategory } from "@/components/ui/Badge";
 import { ArrowLeftRight, ArrowRight, Plus, TrendingUp, Users, Wallet } from "@/components/ui/icons";
 
@@ -60,17 +61,6 @@ export default async function DashboardPage() {
     trend.push({ month: d.toLocaleString("en-PH", { month: "short" }), total: Math.round(total * 100) / 100 });
   }
 
-  const catTotals = new Map<string, number>();
-  for (const e of monthExpenses) {
-    const c = categories.find((c) => c.id === e.category_id);
-    const name = c?.name ?? "Other";
-    catTotals.set(name, (catTotals.get(name) ?? 0) + Number(e.total_amount));
-  }
-  const catData = Array.from(catTotals.entries())
-    .map(([name, value]) => ({ name, value: Math.round(value * 100) / 100 }))
-    .sort((a, b) => b.value - a.value);
-  const catSum = catData.reduce((a, b) => a + b.value, 0);
-
   const paidByData = profiles.map((p) => {
     const b = balances.find((x) => x.user_id === p.id);
     return { name: p.display_name, paid: b ? Math.round(b.paid * 100) / 100 : 0, share: b ? Math.round(b.owed * 100) / 100 : 0 };
@@ -82,10 +72,10 @@ export default async function DashboardPage() {
         title="Dashboard"
         subtitle={`${now.toLocaleString("en-PH", { month: "long", year: "numeric" })}`}
         actions={
-          <Link href="/expenses/new" className="btn-primary text-sm">
+          <NavButton href="/expenses/new" loadingLabel="Opening…">
             <Plus className="h-4 w-4" />
             Add expense
-          </Link>
+          </NavButton>
         }
       />
 
@@ -123,35 +113,7 @@ export default async function DashboardPage() {
           <PaidByBar data={paidByData} />
         </ChartCard>
 
-        <ChartCard
-          title="This month by category"
-          legend={
-            catData.length === 0 ? null : (
-              <ul className="space-y-1.5 text-sm">
-                {catData.map((d, i) => (
-                  <li key={d.name} className="flex items-center justify-between gap-2">
-                    <span className="flex items-center gap-2 min-w-0">
-                      <span
-                        className="h-2.5 w-2.5 shrink-0 rounded-full"
-                        style={{ background: CHART_COLORS[i % CHART_COLORS.length] }}
-                      />
-                      <span className="truncate text-slate-600">{d.name}</span>
-                    </span>
-                    <span className="tabular-nums text-xs text-slate-500">
-                      {catSum > 0 ? `${Math.round((d.value / catSum) * 100)}%` : "0%"}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )
-          }
-        >
-          {catData.length === 0 ? (
-            <p className="text-sm text-slate-500 py-8 text-center">No expenses yet this month.</p>
-          ) : (
-            <CategoryPie data={catData} />
-          )}
-        </ChartCard>
+        <CategoryByPeriodCard expenses={expenses} categories={categories} />
 
         <div className="card">
           <div className="flex items-center justify-between mb-3 gap-2">

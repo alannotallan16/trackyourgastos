@@ -1,17 +1,18 @@
 import Link from "next/link";
 import { ExpenseForm } from "@/components/ExpenseForm";
-import { getCategories, getMerchantRules, getProfiles, getSplitPresets } from "@/lib/data";
+import { getCategories, getDistinctMerchants, getMerchantRules, getProfiles, getSplitPresets } from "@/lib/data";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Camera } from "@/components/ui/icons";
 
 export const dynamic = "force-dynamic";
 
 export default async function NewExpensePage() {
-  const [profiles, categories, presets, rules] = await Promise.all([
+  const [profiles, categories, presets, rules, merchants] = await Promise.all([
     getProfiles(),
     getCategories(),
     getSplitPresets(),
-    getMerchantRules()
+    getMerchantRules(),
+    getDistinctMerchants()
   ]);
 
   return (
@@ -25,7 +26,13 @@ export default async function NewExpensePage() {
           </Link>
         }
       />
-      <ExpenseForm profiles={profiles} categories={categories} presets={presets} merchantRules={rules} />
+      <ExpenseForm
+        profiles={profiles}
+        categories={categories}
+        presets={presets}
+        merchantRules={rules}
+        merchantSuggestions={merchants}
+      />
     </div>
   );
 }

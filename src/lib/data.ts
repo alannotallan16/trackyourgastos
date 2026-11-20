@@ -116,3 +116,29 @@ export async function getRecurring(): Promise<RecurringExpense[]> {
   const { data } = await supabase.from("recurring_expenses").select("*").order("next_due_date");
   return (data as RecurringExpense[]) ?? [];
 }
+
+/**
+ * Distinct merchant names from the household's expense history, newest first.
+ * Capped at 500 rows so the request stays small; any merchant used in the last
+ * ~2 years of activity will make it in.
+ */
+export async function getDistinctMerchants(): Promise<string[]> {
+  const supabase = createClient();
+  const { data } = await supabase
+    .from("expenses")
+    .select("merchant")
+    .order("expense_date", { ascending: false })
+    .limit(500);
+  if (!data) return [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const row of data as { merchant: string | null }[]) {
+    const m = row.merchant?.trim();
+    if (!m) continue;
+    const key = m.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(m);
+  }
+  return out.sort((a, b) => a.localeCompare(b));
+}

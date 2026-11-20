@@ -10,6 +10,7 @@ import {
 } from "@/lib/data";
 import { computeBalances, settlementSuggestions } from "@/lib/balances";
 import { formatMoney, formatDate } from "@/lib/format";
+import { syncDueRecurring } from "@/lib/recurring-sync";
 import { MonthlyTrendChart, PaidByBar } from "@/components/DashboardCharts";
 import { CategoryByPeriodCard } from "@/components/CategoryByPeriodCard";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -24,6 +25,10 @@ export const dynamic = "force-dynamic";
 const PERSON_ICON_BG = ["green", "blue", "purple"] as const;
 
 export default async function DashboardPage() {
+  // Catch up any recurring templates whose next_due_date is past before we
+  // read expenses, so newly-generated rows show up in the dashboard totals.
+  await syncDueRecurring();
+
   const [profiles, expenses, splits, batches, batchResults, payments, categories] = await Promise.all([
     getProfiles(),
     getExpenses(),

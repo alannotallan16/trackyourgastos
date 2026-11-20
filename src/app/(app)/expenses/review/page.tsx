@@ -3,7 +3,7 @@ import { ExpenseForm } from "@/components/ExpenseForm";
 import { createClient } from "@/lib/supabase/server";
 import { parseReceiptText } from "@/lib/ocr";
 import { suggestFromMerchant } from "@/lib/categorize";
-import { getCategories, getMerchantRules, getProfiles, getSplitPresets } from "@/lib/data";
+import { getCategories, getDistinctMerchants, getMerchantRules, getProfiles, getSplitPresets } from "@/lib/data";
 import { PageHeader } from "@/components/ui/PageHeader";
 
 export const dynamic = "force-dynamic";
@@ -16,11 +16,12 @@ export default async function ReviewPage({ searchParams }: { searchParams: { rec
   const { data: receipt } = await supabase.from("receipt_files").select("*").eq("id", receiptId).maybeSingle();
   if (!receipt) redirect("/expenses/scan");
 
-  const [profiles, categories, presets, rules] = await Promise.all([
+  const [profiles, categories, presets, rules, merchants] = await Promise.all([
     getProfiles(),
     getCategories(),
     getSplitPresets(),
-    getMerchantRules()
+    getMerchantRules(),
+    getDistinctMerchants()
   ]);
 
   const extracted = parseReceiptText(receipt.ocr_text ?? "");
@@ -58,6 +59,7 @@ export default async function ReviewPage({ searchParams }: { searchParams: { rec
         categories={categories}
         presets={presets}
         merchantRules={rules}
+        merchantSuggestions={merchants}
         duplicates={duplicates}
         initial={{
           expense_date: extracted.date ?? new Date().toISOString().slice(0, 10),

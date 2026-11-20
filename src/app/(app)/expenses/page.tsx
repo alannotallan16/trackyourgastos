@@ -1,11 +1,13 @@
 import { ExpenseTable } from "@/components/ExpenseTable";
 import {
   getCategories,
+  getDistinctMerchants,
   getExpenseSplits,
   getExpenses,
   getProfiles,
   getSettlementBatches
 } from "@/lib/data";
+import { syncDueRecurring } from "@/lib/recurring-sync";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { NavButton } from "@/components/ui/NavButton";
 import { Camera, Plus } from "@/components/ui/icons";
@@ -13,12 +15,14 @@ import { Camera, Plus } from "@/components/ui/icons";
 export const dynamic = "force-dynamic";
 
 export default async function ExpensesPage() {
-  const [expenses, splits, profiles, categories, batches] = await Promise.all([
+  await syncDueRecurring();
+  const [expenses, splits, profiles, categories, batches, merchants] = await Promise.all([
     getExpenses(),
     getExpenseSplits(),
     getProfiles(),
     getCategories(),
-    getSettlementBatches()
+    getSettlementBatches(),
+    getDistinctMerchants()
   ]);
   return (
     <div className="p-4 md:p-6 space-y-4">
@@ -43,6 +47,7 @@ export default async function ExpensesPage() {
         profiles={profiles}
         categories={categories}
         batches={batches}
+        merchantSuggestions={merchants}
       />
     </div>
   );

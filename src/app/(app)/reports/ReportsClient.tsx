@@ -177,11 +177,11 @@ export function ReportsClient({ profiles, expenses, splits, batches, batchResult
       <div className="card grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
         <div>
           <label className="label">From</label>
-          <DateField value={from} onChange={(e) => setFrom(e.target.value)} placeholder="From date" />
+          <DateField value={from} onChange={(e) => setFrom(e.target.value)} placeholder="mm/dd/yyyy" />
         </div>
         <div>
           <label className="label">To</label>
-          <DateField value={to} onChange={(e) => setTo(e.target.value)} placeholder="To date" />
+          <DateField value={to} onChange={(e) => setTo(e.target.value)} placeholder="mm/dd/yyyy" />
         </div>
         <label className="flex items-center gap-2 text-sm text-slate-700">
           <input type="checkbox" checked={includeSettlements} onChange={(e) => setIncludeSettlements(e.target.checked)} className="h-4 w-4 rounded text-brand-green focus:ring-brand-green" />

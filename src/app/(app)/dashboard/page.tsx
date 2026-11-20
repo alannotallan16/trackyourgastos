@@ -12,15 +12,18 @@ import { computeBalances, settlementSuggestions } from "@/lib/balances";
 import { auditBalanceIntegrity } from "@/lib/balance-integrity";
 import { formatMoney, formatDate } from "@/lib/format";
 import { syncDueRecurring } from "@/lib/recurring-sync";
+import { createClient } from "@/lib/supabase/server";
 import { MonthlyTrendChart, PaidByBar } from "@/components/DashboardCharts";
 import { CategoryByPeriodCard } from "@/components/CategoryByPeriodCard";
 import { BalanceIntegrityBanner } from "@/components/BalanceIntegrityBanner";
+import { YourBalanceHero } from "@/components/YourBalanceHero";
+import { SettleUpCard } from "@/components/SettleUpCard";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { StatCard } from "@/components/ui/StatCard";
 import { ChartCard } from "@/components/ui/ChartCard";
 import { NavButton } from "@/components/ui/NavButton";
 import { Badge, colorForCategory } from "@/components/ui/Badge";
-import { ArrowLeftRight, ArrowRight, Plus, TrendingUp, Users, Wallet } from "@/components/ui/icons";
+import { ArrowRight, Plus, TrendingUp, Users, Wallet } from "@/components/ui/icons";
 
 export const dynamic = "force-dynamic";
 
@@ -30,6 +33,11 @@ export default async function DashboardPage() {
   // Catch up any recurring templates whose next_due_date is past before we
   // read expenses, so newly-generated rows show up in the dashboard totals.
   await syncDueRecurring();
+
+  const supabase = createClient();
+  const {
+    data: { user }
+  } = await supabase.auth.getUser();
 
   const [profiles, expenses, splits, batches, batchResults, payments, categories] = await Promise.all([
     getProfiles(),
@@ -45,9 +53,6 @@ export default async function DashboardPage() {
   const thisMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
   const monthExpenses = expenses.filter((e) => e.expense_date.startsWith(thisMonth));
   const monthTotal = monthExpenses.reduce((a, b) => a + Number(b.total_amount), 0);
-  const openSettlementsCount = batches.filter(
-    (b) => b.status === "open" || b.status === "partially_paid"
-  ).length;
 
   const balances = computeBalances(
     profiles,
@@ -61,17 +66,63 @@ export default async function DashboardPage() {
   const profilesById = new Map(profiles.map((p) => [p.id, p]));
   const categoriesById = new Map(categories.map((c) => [c.id, c]));
 
+  // ---------------------------------------------------------------------------
+  // Signed-in user → profile (for the hero).
+  // ---------------------------------------------------------------------------
+  const me = user ? profiles.find((p) => p.id === user.id) ?? null : null;
+  const others = me ? profiles.filter((p) => p.id !== me.id) : [];
+
+  // Per-user split rollup, limited to current signed-in person, so the hero
+  // can show "unsettled vs in settlement" for them specifically.
+  let unsettledShare = 0;
+  let inSettlementShare = 0;
+  if (me) {
+    for (const s of splits) {
+      if (s.user_id !== me.id) continue;
+      const amt = Number(s.calculated_amount);
+      if (s.settlement_status === "unpaid") unsettledShare += amt;
+      else if (s.settlement_status === "in_settlement") inSettlementShare += amt;
+    }
+  }
+
+  // Household-level unsettled snapshot for the Settle Up card's nudge.
+  const splitsByExpense = new Map<string, typeof splits>();
+  for (const s of splits) {
+    if (!splitsByExpense.has(s.expense_id)) splitsByExpense.set(s.expense_id, []);
+    splitsByExpense.get(s.expense_id)!.push(s);
+  }
+  let unsettledCount = 0;
+  let unsettledTotal = 0;
+  let unsettledSince: string | null = null;
+  for (const e of expenses) {
+    const sp = splitsByExpense.get(e.id) ?? [];
+    if (sp.length === 0) continue;
+    if (!sp.every((s) => s.settlement_status === "unpaid")) continue;
+    unsettledCount++;
+    unsettledTotal += Number(e.total_amount);
+    if (!unsettledSince || e.expense_date < unsettledSince) unsettledSince = e.expense_date;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Charts — unchanged logic.
+  // ---------------------------------------------------------------------------
   const trend: { month: string; total: number }[] = [];
   for (let i = 5; i >= 0; i--) {
     const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
     const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-    const total = expenses.filter((e) => e.expense_date.startsWith(key)).reduce((a, b) => a + Number(b.total_amount), 0);
+    const total = expenses
+      .filter((e) => e.expense_date.startsWith(key))
+      .reduce((a, b) => a + Number(b.total_amount), 0);
     trend.push({ month: d.toLocaleString("en-PH", { month: "short" }), total: Math.round(total * 100) / 100 });
   }
 
   const paidByData = profiles.map((p) => {
     const b = balances.find((x) => x.user_id === p.id);
-    return { name: p.display_name, paid: b ? Math.round(b.paid * 100) / 100 : 0, share: b ? Math.round(b.owed * 100) / 100 : 0 };
+    return {
+      name: p.display_name,
+      paid: b ? Math.round(b.paid * 100) / 100 : 0,
+      share: b ? Math.round(b.owed * 100) / 100 : 0
+    };
   });
 
   return (
@@ -89,30 +140,80 @@ export default async function DashboardPage() {
 
       <BalanceIntegrityBanner report={integrity} />
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
-        <StatCard
-          label={`Total expenses (${now.toLocaleString("en-PH", { month: "short" })})`}
-          value={formatMoney(monthTotal)}
-          hint={`${monthExpenses.length} expense${monthExpenses.length === 1 ? "" : "s"} this month`}
-          icon={TrendingUp}
-          iconBg="green"
+      {me ? (
+        <YourBalanceHero
+          me={me}
+          others={others}
+          balances={balances}
+          unsettledShare={Math.round(unsettledShare * 100) / 100}
+          inSettlementShare={Math.round(inSettlementShare * 100) / 100}
         />
-        {profiles.map((p, i) => {
-          const b = balances.find((x) => x.user_id === p.id);
-          const net = b?.net ?? 0;
-          return (
-            <StatCard
-              key={p.id}
-              label={`${p.display_name} net`}
-              value={formatMoney(net)}
-              hint={`Paid ${formatMoney(b?.paid ?? 0)} · Share ${formatMoney(b?.owed ?? 0)}`}
-              tone={net > 0 ? "positive" : net < 0 ? "negative" : "default"}
-              icon={i === 0 ? Wallet : Users}
-              iconBg={PERSON_ICON_BG[i % PERSON_ICON_BG.length]}
-            />
-          );
-        })}
-      </div>
+      ) : (
+        // Fallback when the signed-in auth user isn't linked to a profile yet.
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+          <StatCard
+            label={`Total expenses (${now.toLocaleString("en-PH", { month: "short" })})`}
+            value={formatMoney(monthTotal)}
+            hint={`${monthExpenses.length} expense${monthExpenses.length === 1 ? "" : "s"} this month`}
+            icon={TrendingUp}
+            iconBg="green"
+          />
+          {profiles.map((p, i) => {
+            const b = balances.find((x) => x.user_id === p.id);
+            const net = b?.net ?? 0;
+            return (
+              <StatCard
+                key={p.id}
+                label={`${p.display_name} net`}
+                value={formatMoney(net)}
+                hint={`Paid ${formatMoney(b?.paid ?? 0)} · Share ${formatMoney(b?.owed ?? 0)}`}
+                tone={net > 0 ? "positive" : net < 0 ? "negative" : "default"}
+                icon={i === 0 ? Wallet : Users}
+                iconBg={PERSON_ICON_BG[i % PERSON_ICON_BG.length]}
+              />
+            );
+          })}
+        </div>
+      )}
+
+      <SettleUpCard
+        suggestions={suggestions}
+        batches={batches}
+        batchResults={batchResults}
+        profiles={profiles}
+        unsettledCount={unsettledCount}
+        unsettledTotal={Math.round(unsettledTotal * 100) / 100}
+        unsettledSince={unsettledSince}
+        meId={me?.id}
+      />
+
+      {/* Month total + charts */}
+      {me && (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <StatCard
+            label={`Total this month`}
+            value={formatMoney(monthTotal)}
+            hint={`${monthExpenses.length} expense${monthExpenses.length === 1 ? "" : "s"} · ${now.toLocaleString("en-PH", { month: "long" })}`}
+            icon={TrendingUp}
+            iconBg="green"
+          />
+          {others.map((p, i) => {
+            const b = balances.find((x) => x.user_id === p.id);
+            const net = b?.net ?? 0;
+            return (
+              <StatCard
+                key={p.id}
+                label={`${p.display_name} net`}
+                value={formatMoney(net)}
+                hint={`Paid ${formatMoney(b?.paid ?? 0)} · Share ${formatMoney(b?.owed ?? 0)}`}
+                tone={net > 0 ? "positive" : net < 0 ? "negative" : "default"}
+                icon={i === 0 ? Wallet : Users}
+                iconBg={PERSON_ICON_BG[(i + 1) % PERSON_ICON_BG.length]}
+              />
+            );
+          })}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <ChartCard title="Monthly spending trend" subtitle="Last 6 months">
@@ -123,35 +224,8 @@ export default async function DashboardPage() {
           <PaidByBar data={paidByData} />
         </ChartCard>
 
-        <CategoryByPeriodCard expenses={expenses} categories={categories} />
-
-        <div className="card">
-          <div className="flex items-center justify-between mb-3 gap-2">
-            <h2 className="text-sm font-semibold text-brand-navy">Who owes who</h2>
-            <Link
-              href="/settlements"
-              className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 text-amber-800 ring-1 ring-amber-200 px-2.5 py-0.5 text-xs font-medium hover:brightness-95"
-            >
-              <ArrowLeftRight className="h-3.5 w-3.5" />
-              {openSettlementsCount} open
-            </Link>
-          </div>
-          {suggestions.length === 0 ? (
-            <p className="text-sm text-slate-500">All balances settled.</p>
-          ) : (
-            <ul className="space-y-2 text-sm">
-              {suggestions.map((s, i) => (
-                <li key={i} className="flex items-center justify-between rounded-xl border border-slate-100 px-3 py-2">
-                  <span className="flex items-center gap-2 min-w-0">
-                    <span className="font-medium text-brand-navy">{profilesById.get(s.from_user_id)?.display_name}</span>
-                    <ArrowRight className="h-4 w-4 text-slate-400" />
-                    <span className="font-medium text-brand-navy">{profilesById.get(s.to_user_id)?.display_name}</span>
-                  </span>
-                  <span className="tabular-nums font-semibold text-brand-danger">{formatMoney(s.amount)}</span>
-                </li>
-              ))}
-            </ul>
-          )}
+        <div className="lg:col-span-2">
+          <CategoryByPeriodCard expenses={expenses} categories={categories} />
         </div>
       </div>
 

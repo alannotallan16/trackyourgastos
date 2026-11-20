@@ -45,6 +45,18 @@ export async function saveExpense(payload: ExpensePayload) {
   }));
   const calculated = calculateSplits(parsed.total_amount, splitInputs);
 
+  // Integrity guard: calculateSplits should always reconcile to the total
+  // (the last row absorbs rounding), but if a future caller bypasses that
+  // reconciliation step we refuse to save rather than let the dashboard nets
+  // stop summing to zero again. Tolerance ±₱0.01.
+  const sumCalc = calculated.reduce((a, b) => a + Number(b.calculated_amount), 0);
+  const diff = Math.round((Number(parsed.total_amount) - sumCalc) * 100) / 100;
+  if (Math.abs(diff) > 0.01) {
+    throw new Error(
+      `Splits don't sum to total (${diff > 0 ? "missing" : "extra"} ${Math.abs(diff).toFixed(2)} ${parsed.currency}). The household balance would not reconcile — adjust the split and try again.`
+    );
+  }
+
   let expenseId = parsed.id;
   if (expenseId) {
     const { error } = await supabase

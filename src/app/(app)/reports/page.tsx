@@ -8,8 +8,10 @@ import {
   getSettlementPayments
 } from "@/lib/data";
 import { computeBalances } from "@/lib/balances";
+import { auditBalanceIntegrity } from "@/lib/balance-integrity";
 import { ReportsClient } from "./ReportsClient";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { IntegritySection } from "./IntegritySection";
 
 export const dynamic = "force-dynamic";
 
@@ -30,9 +32,11 @@ export default async function ReportsPage() {
     payments,
     batchResults.map((r) => ({ id: r.id, from_user_id: r.from_user_id, to_user_id: r.to_user_id }))
   );
+  const integrity = auditBalanceIntegrity(expenses, splits);
   return (
     <div className="p-4 md:p-6 space-y-4">
       <PageHeader title="Reports & exports" subtitle="Filter, summarize, and download your data." />
+      <IntegritySection report={integrity} />
       <ReportsClient
         profiles={profiles}
         expenses={expenses}

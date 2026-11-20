@@ -64,14 +64,19 @@ export function RecurringClient({ items, profiles, categories, presets }: Props)
   const profilesById = new Map(profiles.map((p) => [p.id, p]));
   const catsById = new Map(categories.map((c) => [c.id, c]));
   const today = new Date().toISOString().slice(0, 10);
-  const upcoming = items.filter((i) => i.active && i.next_due_date <= addDays(today, 14));
+  const activeItems = items.filter((i) => i.active);
+  const upcoming = activeItems.filter((i) => i.next_due_date <= addDays(today, 14));
+  const summary =
+    items.length === 0
+      ? "No recurring templates yet."
+      : upcoming.length > 0
+        ? `${upcoming.length} due within 14 days · ${activeItems.length} active template${activeItems.length === 1 ? "" : "s"}`
+        : `${activeItems.length} active template${activeItems.length === 1 ? "" : "s"} · none due in the next 14 days.`;
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <p className="text-sm text-slate-600">
-          {upcoming.length > 0 ? `${upcoming.length} due within 14 days.` : "No upcoming recurring expenses."}
-        </p>
+        <p className="text-sm text-slate-600">{summary}</p>
         <button className="btn-primary text-sm" onClick={startNew}>
           <Plus className="h-4 w-4" />
           New recurring

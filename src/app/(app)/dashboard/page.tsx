@@ -9,10 +9,12 @@ import {
   getSettlementPayments
 } from "@/lib/data";
 import { computeBalances, settlementSuggestions } from "@/lib/balances";
+import { auditBalanceIntegrity } from "@/lib/balance-integrity";
 import { formatMoney, formatDate } from "@/lib/format";
 import { syncDueRecurring } from "@/lib/recurring-sync";
 import { MonthlyTrendChart, PaidByBar } from "@/components/DashboardCharts";
 import { CategoryByPeriodCard } from "@/components/CategoryByPeriodCard";
+import { BalanceIntegrityBanner } from "@/components/BalanceIntegrityBanner";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { StatCard } from "@/components/ui/StatCard";
 import { ChartCard } from "@/components/ui/ChartCard";
@@ -55,6 +57,7 @@ export default async function DashboardPage() {
     batchResults.map((r) => ({ id: r.id, from_user_id: r.from_user_id, to_user_id: r.to_user_id }))
   );
   const suggestions = settlementSuggestions(balances);
+  const integrity = auditBalanceIntegrity(expenses, splits);
   const profilesById = new Map(profiles.map((p) => [p.id, p]));
   const categoriesById = new Map(categories.map((c) => [c.id, c]));
 
@@ -83,6 +86,8 @@ export default async function DashboardPage() {
           </NavButton>
         }
       />
+
+      <BalanceIntegrityBanner report={integrity} />
 
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
         <StatCard

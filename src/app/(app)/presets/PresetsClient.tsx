@@ -153,6 +153,7 @@ export function PresetsClient({ profiles, presets }: Props) {
                       <input
                         className="input w-24"
                         type="number"
+                        inputMode="decimal"
                         step="0.01"
                         value={m.percentage ?? ""}
                         onChange={(e) => {
@@ -161,6 +162,7 @@ export function PresetsClient({ profiles, presets }: Props) {
                           next[i] = { ...m, percentage: v };
                           setEditing({ ...editing, members: next });
                         }}
+                        onFocus={(e) => e.currentTarget.select()}
                         placeholder="%"
                       />
                     )}
@@ -168,6 +170,7 @@ export function PresetsClient({ profiles, presets }: Props) {
                       <input
                         className="input w-32"
                         type="number"
+                        inputMode="decimal"
                         step="0.01"
                         value={m.fixed_amount ?? ""}
                         onChange={(e) => {
@@ -176,6 +179,7 @@ export function PresetsClient({ profiles, presets }: Props) {
                           next[i] = { ...m, fixed_amount: v };
                           setEditing({ ...editing, members: next });
                         }}
+                        onFocus={(e) => e.currentTarget.select()}
                         placeholder="amount"
                       />
                     )}

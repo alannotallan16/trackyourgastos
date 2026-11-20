@@ -176,11 +176,13 @@ export function BatchDetailActions({
                 <input
                   className="input"
                   type="number"
+                  inputMode="decimal"
                   step="0.01"
                   min="0"
                   required
                   value={payment.amount}
                   onChange={(e) => setPayment({ ...payment, amount: Number(e.target.value) })}
+                  onFocus={(e) => e.currentTarget.select()}
                 />
               </div>
               <div>

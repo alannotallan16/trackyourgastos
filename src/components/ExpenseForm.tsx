@@ -7,6 +7,15 @@ import { saveExpense, type ExpensePayload } from "@/app/(app)/expenses/actions";
 import { suggestFromMerchant } from "@/lib/categorize";
 import { calculateSplits, presetToSplitInputs, equalSplitInputs } from "@/lib/splits";
 import { formatMoney } from "@/lib/format";
+import { MerchantAutocomplete } from "@/components/ui/MerchantAutocomplete";
+
+/**
+ * Select the current contents when a numeric input is focused. Fixes "01" / "00"
+ * leading zeros on mobile, where the previous value isn't replaced by typing.
+ */
+const selectOnFocus = (e: React.FocusEvent<HTMLInputElement>) => {
+  e.currentTarget.select();
+};
 
 export interface DuplicateCandidate {
   id: string;
@@ -189,33 +198,26 @@ export function ExpenseForm({
         </div>
         <div>
           <label className="label">Merchant</label>
-          <input
-            className="input"
-            type="text"
+          <MerchantAutocomplete
             value={merchant}
-            onChange={(e) => setMerchant(e.target.value)}
+            onChange={setMerchant}
+            suggestions={merchantSuggestions}
             placeholder="e.g. Landers, Netflix, Pelco"
-            list="expense-merchants-datalist"
-            autoComplete="off"
             required
+            listId="expense-form-merchants"
           />
-          {merchantSuggestions.length > 0 && (
-            <datalist id="expense-merchants-datalist">
-              {merchantSuggestions.map((m) => (
-                <option key={m} value={m} />
-              ))}
-            </datalist>
-          )}
         </div>
         <div>
           <label className="label">Total amount</label>
           <input
             className="input"
             type="number"
+            inputMode="decimal"
             step="0.01"
             min="0"
             value={total}
             onChange={(e) => setTotal(e.target.value)}
+            onFocus={selectOnFocus}
             required
           />
         </div>
@@ -235,9 +237,11 @@ export function ExpenseForm({
             <input
               className="input"
               type="number"
+              inputMode="decimal"
               step="0.0001"
               value={exchangeRate}
               onChange={(e) => setExchangeRate(e.target.value)}
+              onFocus={selectOnFocus}
               placeholder="optional"
             />
             {exchangeRate && totalNum > 0 && (
@@ -319,9 +323,11 @@ export function ExpenseForm({
                     <input
                       className="input w-24"
                       type="number"
+                      inputMode="decimal"
                       step="0.01"
                       value={row.percentage}
                       onChange={(e) => setPerUser({ ...perUser, [p.id]: { ...row, percentage: e.target.value } })}
+                      onFocus={selectOnFocus}
                       placeholder="%"
                     />
                     <span className="text-xs text-slate-500">%</span>
@@ -331,9 +337,11 @@ export function ExpenseForm({
                   <input
                     className="input w-32"
                     type="number"
+                    inputMode="decimal"
                     step="0.01"
                     value={row.fixed}
                     onChange={(e) => setPerUser({ ...perUser, [p.id]: { ...row, fixed: e.target.value } })}
+                    onFocus={selectOnFocus}
                     placeholder="amount"
                   />
                 )}

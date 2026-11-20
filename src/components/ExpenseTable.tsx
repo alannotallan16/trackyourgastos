@@ -6,6 +6,7 @@ import type { Category, Expense, ExpenseSplit, Profile, SettlementBatch } from "
 import { Badge, colorForCategory } from "@/components/ui/Badge";
 import { ChevronLeft, ChevronRight, Paperclip } from "@/components/ui/icons";
 import { DateField } from "@/components/ui/DateField";
+import { MerchantAutocomplete } from "@/components/ui/MerchantAutocomplete";
 import { ExpenseDetailDrawer } from "@/components/ExpenseDetailDrawer";
 
 function countActiveFilters(filters: {
@@ -274,13 +275,6 @@ export function ExpenseTable({ expenses, splits, profiles, categories, batches, 
 
   return (
     <div className="space-y-4">
-      {merchantSuggestions.length > 0 && (
-        <datalist id="expense-filter-merchants">
-          {merchantSuggestions.map((m) => (
-            <option key={m} value={m} />
-          ))}
-        </datalist>
-      )}
       <div className="flex flex-wrap items-center gap-2">
         {STATUS_FILTERS.map((f) => {
           const active = statusFilter === f.key;
@@ -353,13 +347,12 @@ export function ExpenseTable({ expenses, splits, profiles, categories, batches, 
             </option>
           ))}
         </select>
-        <input
-          className="input"
-          placeholder="Merchant"
+        <MerchantAutocomplete
           value={merchant}
-          onChange={(e) => setMerchant(e.target.value)}
-          list="expense-filter-merchants"
-          autoComplete="off"
+          onChange={setMerchant}
+          suggestions={merchantSuggestions}
+          placeholder="Merchant"
+          listId="expense-filter-merchants"
         />
         <select className="input" value={currency} onChange={(e) => setCurrency(e.target.value)}>
           <option value="">Currency (any)</option>

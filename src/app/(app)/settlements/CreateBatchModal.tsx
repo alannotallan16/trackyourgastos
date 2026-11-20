@@ -5,7 +5,13 @@ import { useRouter } from "next/navigation";
 import { createSettlementBatch } from "./actions";
 import { computeHouseholdNet, settlementSuggestions } from "@/lib/balances";
 import { formatDate, formatMoney } from "@/lib/format";
-import type { Category, Expense, ExpenseSplit, Profile } from "@/lib/types";
+import type {
+  Category,
+  Expense,
+  ExpenseSplit,
+  Profile,
+  SettlementBatchResult
+} from "@/lib/types";
 import { Badge, colorForCategory } from "@/components/ui/Badge";
 import { DateField } from "@/components/ui/DateField";
 import { ArrowRight, X } from "@/components/ui/icons";
@@ -17,11 +23,22 @@ interface Props {
   expenses: Expense[];
   splits: ExpenseSplit[];
   categories: Category[];
+  /** Existing batch_results — used to warn when the selected expenses would
+   *  layer a new batch on top of a pair that already has an open row. */
+  batchResults: SettlementBatchResult[];
 }
 
 const ROUND2 = (n: number) => Math.round(n * 100) / 100;
 
-export function CreateBatchModal({ open, onClose, profiles, expenses, splits, categories }: Props) {
+export function CreateBatchModal({
+  open,
+  onClose,
+  profiles,
+  expenses,
+  splits,
+  categories,
+  batchResults
+}: Props) {
   const router = useRouter();
 
   const profilesById = useMemo(() => new Map(profiles.map((p) => [p.id, p])), [profiles]);
@@ -106,6 +123,42 @@ export function CreateBatchModal({ open, onClose, profiles, expenses, splits, ca
     const suggestions = settlementSuggestions(balances);
     return { balances, suggestions };
   }, [selected, eligibleExpenses, splitsByExpense, profiles]);
+
+  // Bidirectional pair warning. For every unordered pair {A, B} implied by the
+  // selected expenses' preview suggestions, sum existing open batch_results
+  // in each direction. Fire when either direction has an open amount > ₱1.
+  const pairWarnings = useMemo(() => {
+    if (preview.suggestions.length === 0) return [];
+    const openByPair = new Map<string, number>();
+    for (const r of batchResults) {
+      if (r.status !== "open" && r.status !== "partially_paid") continue;
+      const key = `${r.from_user_id}→${r.to_user_id}`;
+      openByPair.set(key, (openByPair.get(key) ?? 0) + Number(r.remaining_amount));
+    }
+    const seenUnordered = new Set<string>();
+    const out: {
+      a_id: string;
+      b_id: string;
+      a_to_b: number;
+      b_to_a: number;
+    }[] = [];
+    for (const s of preview.suggestions) {
+      const unorderedKey = [s.from_user_id, s.to_user_id].sort().join("|");
+      if (seenUnordered.has(unorderedKey)) continue;
+      seenUnordered.add(unorderedKey);
+      const ab = openByPair.get(`${s.from_user_id}→${s.to_user_id}`) ?? 0;
+      const ba = openByPair.get(`${s.to_user_id}→${s.from_user_id}`) ?? 0;
+      if (Math.max(ab, ba) > 1) {
+        out.push({
+          a_id: s.from_user_id,
+          b_id: s.to_user_id,
+          a_to_b: ab,
+          b_to_a: ba
+        });
+      }
+    }
+    return out;
+  }, [preview.suggestions, batchResults]);
 
   // ---------- selection helpers ----------
   function toggleAt(index: number, shiftKey: boolean) {
@@ -314,6 +367,36 @@ export function CreateBatchModal({ open, onClose, profiles, expenses, splits, ca
             <span className="text-slate-400 text-xs">{mobileSummaryOpen ? "Hide" : "Show"}</span>
           </button>
         </div>
+
+        {/* Bidirectional pair warning (fires when the new batch would layer
+            onto a pair that already has an open batch_result > ₱1). */}
+        {pairWarnings.length > 0 && (
+          <div className="px-5 py-3 border-b border-amber-100 bg-amber-50/70 text-amber-900">
+            <div className="text-xs font-semibold uppercase tracking-wide text-amber-700 mb-1">
+              Heads up — existing open debt in this pair
+            </div>
+            <ul className="space-y-0.5 text-sm">
+              {pairWarnings.map((w) => {
+                const aName = profilesById.get(w.a_id)?.display_name ?? "—";
+                const bName = profilesById.get(w.b_id)?.display_name ?? "—";
+                return (
+                  <li key={`${w.a_id}-${w.b_id}`}>
+                    <strong className="font-semibold">{aName}</strong>
+                    <span className="mx-1">↔</span>
+                    <strong className="font-semibold">{bName}</strong>
+                    <span className="text-xs text-amber-800 ml-2 tabular-nums">
+                      {aName}→{bName} {formatMoney(w.a_to_b)} · {bName}→{aName} {formatMoney(w.b_to_a)}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+            <p className="mt-1 text-[11px] text-amber-800">
+              Consider reconciling existing rows before creating a batch that would
+              layer new debt on the same pair.
+            </p>
+          </div>
+        )}
 
         {/* Sticky summary */}
         <div className={`${mobileSummaryOpen ? "" : "hidden"} md:block px-5 py-3 border-b border-slate-200 bg-emerald-50/40 space-y-2`}>

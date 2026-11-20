@@ -162,6 +162,7 @@ export default async function DashboardPage() {
         batches={batches}
         batchResults={batchResults}
         profiles={profiles}
+        householdBalances={balances}
         unsettledCount={unsettledCount}
         unsettledTotal={Math.round(unsettledTotal * 100) / 100}
         unsettledSince={unsettledSince}

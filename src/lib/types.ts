@@ -68,8 +68,17 @@ export interface ExpenseSplit {
 }
 
 export type SettlementShareStatus = "unpaid" | "in_settlement" | "settled";
-export type SettlementBatchStatus = "open" | "partially_paid" | "paid" | "cancelled";
-export type SettlementBatchResultStatus = "open" | "partially_paid" | "paid";
+export type SettlementBatchStatus =
+  | "open"
+  | "partially_paid"
+  | "paid"
+  | "cancelled"
+  | "reconciled";
+export type SettlementBatchResultStatus =
+  | "open"
+  | "partially_paid"
+  | "paid"
+  | "reconciled";
 
 export interface ReceiptFile {
   id: string;
@@ -124,6 +133,7 @@ export interface SettlementBatchResult {
   amount: number;
   amount_paid: number;
   remaining_amount: number;
+  reconciled_amount: number;
   currency: string;
   status: SettlementBatchResultStatus;
   created_at: string;

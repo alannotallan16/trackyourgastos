@@ -3,15 +3,18 @@
 import Link from "next/link";
 import { useState } from "react";
 import type { Profile, SettlementBatch, SettlementBatchResult } from "@/lib/types";
-import type { DebtSuggestion } from "@/lib/balances";
+import type { DebtSuggestion, UserBalance } from "@/lib/balances";
 import { formatDate, formatMoney } from "@/lib/format";
-import { ArrowRight } from "@/components/ui/icons";
+import { ArrowRight, Plus } from "@/components/ui/icons";
+import { RecordPaymentForPairModal } from "@/components/settlements/RecordPaymentForPairModal";
 
 interface Props {
   suggestions: DebtSuggestion[];
   batches: SettlementBatch[];
   batchResults: SettlementBatchResult[];
   profiles: Profile[];
+  /** Household balances (same `balances` the hero reads). Drives the per-person strip. */
+  householdBalances: UserBalance[];
   /** Count of expenses with every split still `unpaid` (not yet in a batch). */
   unsettledCount: number;
   /** Total value of those unsettled expenses. */
@@ -37,6 +40,7 @@ export function SettleUpCard({
   batches,
   batchResults,
   profiles,
+  householdBalances,
   unsettledCount,
   unsettledTotal,
   unsettledSince,
@@ -44,6 +48,20 @@ export function SettleUpCard({
 }: Props) {
   const profilesById = new Map(profiles.map((p) => [p.id, p]));
   const openBatches = batches.filter((b) => b.status === "open" || b.status === "partially_paid");
+
+  // Standalone Record payment modal (variant B — with the payer/payee picker).
+  // Opens from the card header button, so the household can record payments
+  // that greedy doesn't suggest (e.g. Alan→Len against a stale batch row even
+  // though Alan's overall net is positive).
+  const [standaloneOpen, setStandaloneOpen] = useState(false);
+  // Suggestion-driven modal (variant A — pair pre-filled and locked).
+  const [suggestionModal, setSuggestionModal] = useState<{
+    from_user_id: string;
+    to_user_id: string;
+    suggestedAmount: number;
+  } | null>(null);
+
+  const everyoneSquare = householdBalances.every((b) => Math.abs(b.net) < 0.005);
 
   // Aggregate per batch for the "₱X left · N days" line.
   const resultsByBatch = new Map<string, SettlementBatchResult[]>();
@@ -103,9 +121,20 @@ export function SettleUpCard({
             This is everything still owed, including what's left in any open settlement batches.
           </p>
         </div>
-        <Link href="/settlements" className="btn-secondary text-sm">
-          All settlements
-        </Link>
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            type="button"
+            className="btn-primary text-sm"
+            onClick={() => setStandaloneOpen(true)}
+            title="Record a payment against any (from, to) pair — including pairs no suggestion covers."
+          >
+            <Plus className="h-4 w-4" />
+            Record payment
+          </button>
+          <Link href="/settlements" className="btn-secondary text-sm">
+            All settlements
+          </Link>
+        </div>
       </header>
 
       {nothingPending ? (
@@ -114,6 +143,50 @@ export function SettleUpCard({
         </p>
       ) : (
         <div className="divide-y divide-slate-100">
+          {/* Household balances strip */}
+          <section className="px-5 py-4">
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">
+              Household balances
+            </h3>
+            {everyoneSquare ? (
+              <p className="text-sm text-slate-600">Everyone is settled.</p>
+            ) : (
+              <ul className="space-y-1">
+                {profiles.map((p) => {
+                  const b = householdBalances.find((x) => x.user_id === p.id);
+                  const net = b?.net ?? 0;
+                  const isMe = meId === p.id;
+                  const tone =
+                    net > 0.005
+                      ? "text-emerald-700"
+                      : net < -0.005
+                        ? "text-red-600"
+                        : "text-slate-500";
+                  const label =
+                    net > 0.005
+                      ? `is owed ${formatMoney(net)}`
+                      : net < -0.005
+                        ? `owes ${formatMoney(-net)}`
+                        : "settled";
+                  return (
+                    <li
+                      key={p.id}
+                      className={`flex items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 text-sm ${
+                        isMe ? "border-l-2 border-brand-green bg-emerald-50/40" : ""
+                      }`}
+                    >
+                      <span className="font-medium text-brand-navy min-w-0 truncate">
+                        {p.display_name}
+                        {isMe && <span className="text-xs text-slate-500 ml-1">(you)</span>}
+                      </span>
+                      <span className={`tabular-nums font-semibold ${tone}`}>{label}</span>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </section>
+
           {/* Suggested payments */}
           {suggestions.length > 0 && (
             <section className="px-5 py-4">
@@ -153,13 +226,20 @@ export function SettleUpCard({
                             {formatMoney(s.amount)}
                           </span>
                           {batchForRecord ? (
-                            <Link
-                              href={`/settlements/${batchForRecord}`}
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setSuggestionModal({
+                                  from_user_id: s.from_user_id,
+                                  to_user_id: s.to_user_id,
+                                  suggestedAmount: s.amount
+                                })
+                              }
                               className="inline-flex items-center rounded-md border border-brand-green bg-brand-green/10 px-2.5 py-1 text-xs font-medium text-brand-green hover:bg-brand-green/20"
-                              title="Record against the earliest matching open batch."
+                              title="Record a payment across every open row for this pair."
                             >
                               Record
-                            </Link>
+                            </button>
                           ) : (
                             <Link
                               href="/settlements"
@@ -320,6 +400,26 @@ export function SettleUpCard({
             </section>
           )}
         </div>
+      )}
+
+      <RecordPaymentForPairModal
+        open={standaloneOpen}
+        onClose={() => setStandaloneOpen(false)}
+        profiles={profiles}
+        batchResults={batchResults}
+      />
+      {suggestionModal && (
+        <RecordPaymentForPairModal
+          open={!!suggestionModal}
+          onClose={() => setSuggestionModal(null)}
+          profiles={profiles}
+          batchResults={batchResults}
+          lockedPair={{
+            from_user_id: suggestionModal.from_user_id,
+            to_user_id: suggestionModal.to_user_id
+          }}
+          suggestedAmount={suggestionModal.suggestedAmount}
+        />
       )}
     </section>
   );

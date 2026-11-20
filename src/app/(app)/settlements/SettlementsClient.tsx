@@ -71,7 +71,9 @@ export function SettlementsClient({
   }
 
   const openBatches = batches.filter((b) => b.status === "open" || b.status === "partially_paid");
-  const historyBatches = batches.filter((b) => b.status === "paid" || b.status === "cancelled");
+  const historyBatches = batches.filter(
+    (b) => b.status === "paid" || b.status === "cancelled" || b.status === "reconciled"
+  );
 
   const hasUnsettledExpenses = useMemo(() => {
     const splitsByExpense = new Map<string, ExpenseSplit[]>();
@@ -305,6 +307,7 @@ export function SettlementsClient({
         expenses={expenses}
         splits={splits}
         categories={categories}
+        batchResults={batchResults}
       />
     </div>
   );
@@ -312,11 +315,20 @@ export function SettlementsClient({
 
 export function BatchStatusBadge({ status }: { status: SettlementBatch["status"] }) {
   const map = {
-    open: { color: "orange", label: "Open" },
-    partially_paid: { color: "blue", label: "Partially paid" },
-    paid: { color: "green", label: "Paid" },
-    cancelled: { color: "gray", label: "Cancelled" }
+    open: { color: "orange", label: "Open", title: undefined as string | undefined },
+    partially_paid: { color: "blue", label: "Partially paid", title: undefined },
+    paid: { color: "green", label: "Paid", title: undefined },
+    cancelled: { color: "gray", label: "Cancelled", title: undefined },
+    reconciled: {
+      color: "orange",
+      label: "Reconciled",
+      title: "Closed without payment. The balance is already counted elsewhere."
+    }
   } as const;
   const cfg = map[status];
-  return <Badge color={cfg.color as any}>{cfg.label}</Badge>;
+  return (
+    <span title={cfg.title}>
+      <Badge color={cfg.color as any}>{cfg.label}</Badge>
+    </span>
+  );
 }

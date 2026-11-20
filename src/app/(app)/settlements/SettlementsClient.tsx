@@ -127,39 +127,78 @@ export function SettlementsClient({
         {openBatches.length === 0 ? (
           <p className="px-5 py-6 text-sm text-slate-500 text-center">No open settlements.</p>
         ) : (
-          <table className="min-w-full text-sm">
-            <thead className="bg-slate-50">
-              <tr>
-                <th className="table-cell text-left text-xs uppercase tracking-wide text-slate-600">Ref</th>
-                <th className="table-cell text-left text-xs uppercase tracking-wide text-slate-600">Payments</th>
-                <th className="table-cell text-right text-xs uppercase tracking-wide text-slate-600">Total</th>
-                <th className="table-cell text-right text-xs uppercase tracking-wide text-slate-600">Paid</th>
-                <th className="table-cell text-right text-xs uppercase tracking-wide text-slate-600">Remaining</th>
-                <th className="table-cell text-left text-xs uppercase tracking-wide text-slate-600">Status</th>
-                <th className="table-cell text-left text-xs uppercase tracking-wide text-slate-600">Created</th>
-              </tr>
-            </thead>
-            <tbody>
+          <>
+            <table className="hidden md:table min-w-full text-sm">
+              <thead className="bg-slate-50">
+                <tr>
+                  <th className="table-cell text-left text-xs uppercase tracking-wide text-slate-600">Ref</th>
+                  <th className="table-cell text-left text-xs uppercase tracking-wide text-slate-600">Payments</th>
+                  <th className="table-cell text-right text-xs uppercase tracking-wide text-slate-600">Total</th>
+                  <th className="table-cell text-right text-xs uppercase tracking-wide text-slate-600">Paid</th>
+                  <th className="table-cell text-right text-xs uppercase tracking-wide text-slate-600">Remaining</th>
+                  <th className="table-cell text-left text-xs uppercase tracking-wide text-slate-600">Status</th>
+                  <th className="table-cell text-left text-xs uppercase tracking-wide text-slate-600">Created</th>
+                </tr>
+              </thead>
+              <tbody>
+                {openBatches.map((b) => {
+                  const t = batchTotals(b.id);
+                  return (
+                    <tr key={b.id} className="hover:bg-slate-50">
+                      <td className="table-cell">
+                        <Link className="font-medium text-brand-navy hover:text-brand-green" href={`/settlements/${b.id}`}>
+                          {b.settlement_number}
+                        </Link>
+                      </td>
+                      <td className="table-cell text-slate-600">{t.count}</td>
+                      <td className="table-cell text-right tabular-nums">{formatMoney(t.total)}</td>
+                      <td className="table-cell text-right tabular-nums">{formatMoney(t.paid)}</td>
+                      <td className="table-cell text-right tabular-nums font-semibold">{formatMoney(t.remaining)}</td>
+                      <td className="table-cell"><BatchStatusBadge status={b.status} /></td>
+                      <td className="table-cell text-slate-600">{formatDate(b.created_at.slice(0, 10))}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            <div className="md:hidden divide-y divide-slate-100">
               {openBatches.map((b) => {
                 const t = batchTotals(b.id);
+                const pct = t.total > 0 ? Math.min(100, Math.round((t.paid / t.total) * 100)) : 0;
                 return (
-                  <tr key={b.id} className="hover:bg-slate-50">
-                    <td className="table-cell">
-                      <Link className="font-medium text-brand-navy hover:text-brand-green" href={`/settlements/${b.id}`}>
-                        {b.settlement_number}
-                      </Link>
-                    </td>
-                    <td className="table-cell text-slate-600">{t.count}</td>
-                    <td className="table-cell text-right tabular-nums">{formatMoney(t.total)}</td>
-                    <td className="table-cell text-right tabular-nums">{formatMoney(t.paid)}</td>
-                    <td className="table-cell text-right tabular-nums font-semibold">{formatMoney(t.remaining)}</td>
-                    <td className="table-cell"><BatchStatusBadge status={b.status} /></td>
-                    <td className="table-cell text-slate-600">{formatDate(b.created_at.slice(0, 10))}</td>
-                  </tr>
+                  <Link
+                    key={b.id}
+                    href={`/settlements/${b.id}`}
+                    className="block px-4 py-3 hover:bg-slate-50 active:bg-slate-100"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="font-semibold text-brand-navy">{b.settlement_number}</span>
+                        <BatchStatusBadge status={b.status} />
+                      </div>
+                      <span className="text-sm font-semibold tabular-nums text-brand-navy shrink-0">
+                        {formatMoney(t.total)}
+                      </span>
+                    </div>
+                    <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-slate-500">
+                      <span>{t.count} payment{t.count === 1 ? "" : "s"}</span>
+                      <span>·</span>
+                      <span>Paid <span className="tabular-nums text-brand-green font-medium">{formatMoney(t.paid)}</span></span>
+                      <span>·</span>
+                      <span>Rem <span className="tabular-nums text-brand-navy font-medium">{formatMoney(t.remaining)}</span></span>
+                      <span>·</span>
+                      <span>{formatDate(b.created_at.slice(0, 10))}</span>
+                    </div>
+                    {pct > 0 && pct < 100 && (
+                      <div className="mt-2 h-1 w-full rounded-full bg-slate-100 overflow-hidden">
+                        <div className="h-1 bg-brand-gradient rounded-full" style={{ width: `${pct}%` }} />
+                      </div>
+                    )}
+                  </Link>
                 );
               })}
-            </tbody>
-          </table>
+            </div>
+          </>
         )}
       </div>
 
@@ -170,35 +209,64 @@ export function SettlementsClient({
         {historyBatches.length === 0 ? (
           <p className="px-5 py-6 text-sm text-slate-500 text-center">No closed or cancelled settlements yet.</p>
         ) : (
-          <table className="min-w-full text-sm">
-            <thead className="bg-slate-50">
-              <tr>
-                <th className="table-cell text-left text-xs uppercase tracking-wide text-slate-600">Ref</th>
-                <th className="table-cell text-left text-xs uppercase tracking-wide text-slate-600">Payments</th>
-                <th className="table-cell text-right text-xs uppercase tracking-wide text-slate-600">Total</th>
-                <th className="table-cell text-left text-xs uppercase tracking-wide text-slate-600">Status</th>
-                <th className="table-cell text-left text-xs uppercase tracking-wide text-slate-600">Created</th>
-              </tr>
-            </thead>
-            <tbody>
+          <>
+            <table className="hidden md:table min-w-full text-sm">
+              <thead className="bg-slate-50">
+                <tr>
+                  <th className="table-cell text-left text-xs uppercase tracking-wide text-slate-600">Ref</th>
+                  <th className="table-cell text-left text-xs uppercase tracking-wide text-slate-600">Payments</th>
+                  <th className="table-cell text-right text-xs uppercase tracking-wide text-slate-600">Total</th>
+                  <th className="table-cell text-left text-xs uppercase tracking-wide text-slate-600">Status</th>
+                  <th className="table-cell text-left text-xs uppercase tracking-wide text-slate-600">Created</th>
+                </tr>
+              </thead>
+              <tbody>
+                {historyBatches.map((b) => {
+                  const t = batchTotals(b.id);
+                  return (
+                    <tr key={b.id} className="hover:bg-slate-50">
+                      <td className="table-cell">
+                        <Link className="font-medium text-brand-navy hover:text-brand-green" href={`/settlements/${b.id}`}>
+                          {b.settlement_number}
+                        </Link>
+                      </td>
+                      <td className="table-cell text-slate-600">{t.count}</td>
+                      <td className="table-cell text-right tabular-nums">{formatMoney(t.total)}</td>
+                      <td className="table-cell"><BatchStatusBadge status={b.status} /></td>
+                      <td className="table-cell text-slate-600">{formatDate(b.created_at.slice(0, 10))}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            <div className="md:hidden divide-y divide-slate-100">
               {historyBatches.map((b) => {
                 const t = batchTotals(b.id);
                 return (
-                  <tr key={b.id} className="hover:bg-slate-50">
-                    <td className="table-cell">
-                      <Link className="font-medium text-brand-navy hover:text-brand-green" href={`/settlements/${b.id}`}>
-                        {b.settlement_number}
-                      </Link>
-                    </td>
-                    <td className="table-cell text-slate-600">{t.count}</td>
-                    <td className="table-cell text-right tabular-nums">{formatMoney(t.total)}</td>
-                    <td className="table-cell"><BatchStatusBadge status={b.status} /></td>
-                    <td className="table-cell text-slate-600">{formatDate(b.created_at.slice(0, 10))}</td>
-                  </tr>
+                  <Link
+                    key={b.id}
+                    href={`/settlements/${b.id}`}
+                    className="block px-4 py-3 hover:bg-slate-50 active:bg-slate-100"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="font-semibold text-brand-navy">{b.settlement_number}</span>
+                        <BatchStatusBadge status={b.status} />
+                      </div>
+                      <span className="text-sm font-semibold tabular-nums text-brand-navy shrink-0">
+                        {formatMoney(t.total)}
+                      </span>
+                    </div>
+                    <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-slate-500">
+                      <span>{t.count} payment{t.count === 1 ? "" : "s"}</span>
+                      <span>·</span>
+                      <span>{formatDate(b.created_at.slice(0, 10))}</span>
+                    </div>
+                  </Link>
                 );
               })}
-            </tbody>
-          </table>
+            </div>
+          </>
         )}
       </div>
 

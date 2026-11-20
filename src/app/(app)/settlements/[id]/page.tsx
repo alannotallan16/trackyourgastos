@@ -142,29 +142,30 @@ export default async function BatchDetailPage({ params }: { params: { id: string
                   : 0;
               return (
                 <li key={r.id} className="px-5 py-4">
-                  {/* Header: From → To · status · totals */}
-                  <div className="flex flex-wrap items-center justify-between gap-3">
+                  {/* Header: From → To · status */}
+                  <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="flex items-center gap-2 min-w-0">
                       <span className="font-semibold text-brand-navy text-base">{fromName}</span>
                       <ArrowRight className="h-4 w-4 text-slate-400" />
                       <span className="font-semibold text-brand-navy text-base">{toName}</span>
                       <span className="ml-1">{statusBadge}</span>
                     </div>
-                    <div className="flex items-baseline gap-x-4 gap-y-1 flex-wrap text-sm">
-                      <span className="whitespace-nowrap">
-                        <span className="text-slate-500">Total</span>{" "}
-                        <span className="tabular-nums font-medium text-brand-navy">{formatMoney(Number(r.amount), r.currency)}</span>
-                      </span>
-                      <span className="whitespace-nowrap">
-                        <span className="text-slate-500">Paid</span>{" "}
-                        <span className="tabular-nums font-medium text-brand-green">{formatMoney(Number(r.amount_paid), r.currency)}</span>
-                      </span>
-                      <span className="whitespace-nowrap">
-                        <span className="text-slate-500">Remaining</span>{" "}
-                        <span className="tabular-nums font-semibold text-brand-navy">{formatMoney(Number(r.remaining_amount), r.currency)}</span>
-                      </span>
-                    </div>
                   </div>
+                  {/* Totals — 3-col grid on mobile for clarity */}
+                  <dl className="mt-2 grid grid-cols-3 gap-2 text-sm md:flex md:gap-x-4 md:gap-y-1 md:flex-wrap">
+                    <div className="md:contents">
+                      <dt className="text-xs text-slate-500 md:text-sm md:inline">Total</dt>
+                      <dd className="tabular-nums font-medium text-brand-navy md:inline md:ml-1">{formatMoney(Number(r.amount), r.currency)}</dd>
+                    </div>
+                    <div className="md:contents">
+                      <dt className="text-xs text-slate-500 md:text-sm md:inline">Paid</dt>
+                      <dd className="tabular-nums font-medium text-brand-green md:inline md:ml-1">{formatMoney(Number(r.amount_paid), r.currency)}</dd>
+                    </div>
+                    <div className="md:contents">
+                      <dt className="text-xs text-slate-500 md:text-sm md:inline">Remaining</dt>
+                      <dd className="tabular-nums font-semibold text-brand-navy md:inline md:ml-1">{formatMoney(Number(r.remaining_amount), r.currency)}</dd>
+                    </div>
+                  </dl>
 
                   {/* Progress bar (visible when partially paid) */}
                   {progressPct > 0 && progressPct < 100 && (
@@ -186,31 +187,37 @@ export default async function BatchDetailPage({ params }: { params: { id: string
                         {rPayments.map((p) => {
                           const proofUrl = attachmentUrls.get(p.id);
                           return (
-                            <li key={p.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 text-xs">
-                              <span className="text-slate-600 whitespace-nowrap">{formatDate(p.payment_date)}</span>
-                              <span className="font-semibold tabular-nums whitespace-nowrap text-brand-navy">
-                                {formatMoney(Number(p.amount), p.currency)}
-                              </span>
-                              {p.payment_method && <span className="text-slate-500 whitespace-nowrap">{p.payment_method}</span>}
-                              {p.reference_number && <span className="text-slate-500 whitespace-nowrap">#{p.reference_number}</span>}
-                              {p.notes && <span className="text-slate-500 truncate">— {p.notes}</span>}
-                              <span className="ml-auto flex items-center gap-3">
-                                {proofUrl && (
-                                  <a
-                                    href={proofUrl}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className="inline-flex items-center gap-1 text-brand-green hover:underline"
-                                  >
-                                    <Paperclip className="h-3.5 w-3.5" />
-                                    View
-                                  </a>
-                                )}
-                                <DeletePaymentButton
-                                  paymentId={p.id}
-                                  amountLabel={formatMoney(Number(p.amount), p.currency)}
-                                />
-                              </span>
+                            <li key={p.id} className="px-3 py-2 text-xs">
+                              <div className="flex items-center justify-between gap-3">
+                                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 min-w-0">
+                                  <span className="text-slate-600 whitespace-nowrap">{formatDate(p.payment_date)}</span>
+                                  <span className="font-semibold tabular-nums whitespace-nowrap text-brand-navy">
+                                    {formatMoney(Number(p.amount), p.currency)}
+                                  </span>
+                                  {p.payment_method && <span className="text-slate-500 whitespace-nowrap">{p.payment_method}</span>}
+                                  {p.reference_number && <span className="text-slate-500 whitespace-nowrap">#{p.reference_number}</span>}
+                                </div>
+                                <span className="flex items-center gap-2 shrink-0">
+                                  {proofUrl && (
+                                    <a
+                                      href={proofUrl}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      aria-label="View receipt"
+                                      className="inline-flex items-center gap-1 rounded-md p-1.5 text-brand-green hover:bg-emerald-50"
+                                    >
+                                      <Paperclip className="h-3.5 w-3.5" />
+                                    </a>
+                                  )}
+                                  <DeletePaymentButton
+                                    paymentId={p.id}
+                                    amountLabel={formatMoney(Number(p.amount), p.currency)}
+                                  />
+                                </span>
+                              </div>
+                              {p.notes && (
+                                <p className="mt-1 text-slate-500 text-xs break-words">{p.notes}</p>
+                              )}
                             </li>
                           );
                         })}
@@ -247,72 +254,126 @@ export default async function BatchDetailPage({ params }: { params: { id: string
         {expenseRows.length === 0 ? (
           <p className="px-5 py-6 text-sm text-slate-500 text-center">No expenses linked.</p>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-sm">
-              <thead className="bg-slate-50">
-                <tr>
-                  <th className="px-4 py-2.5 text-left text-xs uppercase tracking-wide text-slate-600 whitespace-nowrap">Date</th>
-                  <th className="px-4 py-2.5 text-left text-xs uppercase tracking-wide text-slate-600">Merchant</th>
-                  <th className="px-4 py-2.5 text-left text-xs uppercase tracking-wide text-slate-600 whitespace-nowrap">Category</th>
-                  <th className="px-4 py-2.5 text-left text-xs uppercase tracking-wide text-slate-600 whitespace-nowrap">Paid by</th>
-                  <th className="px-4 py-2.5 text-right text-xs uppercase tracking-wide text-slate-600 whitespace-nowrap">Total</th>
-                  {profiles.map((p) => (
-                    <th
-                      key={p.id}
-                      className="px-4 py-2.5 text-right text-xs uppercase tracking-wide text-slate-600 whitespace-nowrap"
-                    >
-                      {p.display_name}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {expenseRows.map((eid) => {
-                  const e = expensesById.get(eid);
-                  if (!e) return null;
-                  const cat = e.category_id ? categoriesById.get(e.category_id) : null;
-                  const eItems = items.filter((i) => i.expense_id === eid);
-                  const shareByUser = new Map(eItems.map((it) => [it.user_id, it]));
-                  return (
-                    <tr key={eid} className="hover:bg-slate-50">
-                      <td className="px-4 py-3 whitespace-nowrap text-slate-600 border-b border-slate-100">
-                        {formatDate(e.expense_date)}
-                      </td>
-                      <td className="px-4 py-3 font-medium text-brand-navy border-b border-slate-100">
-                        <Link className="hover:text-brand-green" href={`/expenses/${e.id}`}>
-                          {e.merchant}
-                        </Link>
-                      </td>
-                      <td className="px-4 py-3 whitespace-nowrap border-b border-slate-100">
-                        {cat ? <Badge color={colorForCategory(cat.name)}>{cat.name}</Badge> : <span className="text-slate-400">—</span>}
-                      </td>
-                      <td className="px-4 py-3 whitespace-nowrap text-slate-600 border-b border-slate-100">
-                        {profilesById.get(e.paid_by_user_id)?.display_name ?? "—"}
-                      </td>
-                      <td className="px-4 py-3 text-right tabular-nums whitespace-nowrap font-semibold border-b border-slate-100">
-                        {formatMoney(Number(e.total_amount), e.currency)}
-                      </td>
+          <>
+            <div className="hidden md:block overflow-x-auto">
+              <table className="min-w-full text-sm">
+                <thead className="bg-slate-50">
+                  <tr>
+                    <th className="px-4 py-2.5 text-left text-xs uppercase tracking-wide text-slate-600 whitespace-nowrap">Date</th>
+                    <th className="px-4 py-2.5 text-left text-xs uppercase tracking-wide text-slate-600">Merchant</th>
+                    <th className="px-4 py-2.5 text-left text-xs uppercase tracking-wide text-slate-600 whitespace-nowrap">Category</th>
+                    <th className="px-4 py-2.5 text-left text-xs uppercase tracking-wide text-slate-600 whitespace-nowrap">Paid by</th>
+                    <th className="px-4 py-2.5 text-right text-xs uppercase tracking-wide text-slate-600 whitespace-nowrap">Total</th>
+                    {profiles.map((p) => (
+                      <th
+                        key={p.id}
+                        className="px-4 py-2.5 text-right text-xs uppercase tracking-wide text-slate-600 whitespace-nowrap"
+                      >
+                        {p.display_name}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {expenseRows.map((eid) => {
+                    const e = expensesById.get(eid);
+                    if (!e) return null;
+                    const cat = e.category_id ? categoriesById.get(e.category_id) : null;
+                    const eItems = items.filter((i) => i.expense_id === eid);
+                    const shareByUser = new Map(eItems.map((it) => [it.user_id, it]));
+                    return (
+                      <tr key={eid} className="hover:bg-slate-50">
+                        <td className="px-4 py-3 whitespace-nowrap text-slate-600 border-b border-slate-100">
+                          {formatDate(e.expense_date)}
+                        </td>
+                        <td className="px-4 py-3 font-medium text-brand-navy border-b border-slate-100">
+                          <Link className="hover:text-brand-green" href={`/expenses/${e.id}`}>
+                            {e.merchant}
+                          </Link>
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap border-b border-slate-100">
+                          {cat ? <Badge color={colorForCategory(cat.name)}>{cat.name}</Badge> : <span className="text-slate-400">—</span>}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap text-slate-600 border-b border-slate-100">
+                          {profilesById.get(e.paid_by_user_id)?.display_name ?? "—"}
+                        </td>
+                        <td className="px-4 py-3 text-right tabular-nums whitespace-nowrap font-semibold border-b border-slate-100">
+                          {formatMoney(Number(e.total_amount), e.currency)}
+                        </td>
+                        {profiles.map((p) => {
+                          const item = shareByUser.get(p.id);
+                          return (
+                            <td
+                              key={p.id}
+                              className="px-4 py-3 text-right tabular-nums whitespace-nowrap text-slate-700 border-b border-slate-100"
+                            >
+                              {item ? (
+                                formatMoney(Number(item.share_amount), e.currency)
+                              ) : (
+                                <span className="text-slate-300">—</span>
+                              )}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Mobile card list */}
+            <div className="md:hidden divide-y divide-slate-100">
+              {expenseRows.map((eid) => {
+                const e = expensesById.get(eid);
+                if (!e) return null;
+                const cat = e.category_id ? categoriesById.get(e.category_id) : null;
+                const eItems = items.filter((i) => i.expense_id === eid);
+                const shareByUser = new Map(eItems.map((it) => [it.user_id, it]));
+                return (
+                  <Link
+                    key={eid}
+                    href={`/expenses/${e.id}`}
+                    className="block px-4 py-3 hover:bg-slate-50 active:bg-slate-100"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <div className="font-medium text-brand-navy truncate">{e.merchant}</div>
+                        <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500">
+                          <span>{formatDate(e.expense_date)}</span>
+                          <span>·</span>
+                          <span>Paid by {profilesById.get(e.paid_by_user_id)?.display_name ?? "—"}</span>
+                          {cat && <Badge color={colorForCategory(cat.name)}>{cat.name}</Badge>}
+                        </div>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <div className="text-sm font-semibold tabular-nums text-brand-navy">
+                          {formatMoney(Number(e.total_amount), e.currency)}
+                        </div>
+                      </div>
+                    </div>
+                    <dl className="mt-2 grid grid-cols-3 gap-2 text-xs">
                       {profiles.map((p) => {
                         const item = shareByUser.get(p.id);
                         return (
-                          <td
-                            key={p.id}
-                            className="px-4 py-3 text-right tabular-nums whitespace-nowrap text-slate-700 border-b border-slate-100"
-                          >
-                            {item ? (
-                              formatMoney(Number(item.share_amount), e.currency)
-                            ) : (
-                              <span className="text-slate-300">—</span>
-                            )}
-                          </td>
+                          <div key={p.id}>
+                            <dt className="text-slate-500">{p.display_name}</dt>
+                            <dd className="tabular-nums text-slate-700">
+                              {item ? (
+                                formatMoney(Number(item.share_amount), e.currency)
+                              ) : (
+                                <span className="text-slate-300">—</span>
+                              )}
+                            </dd>
+                          </div>
                         );
                       })}
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                    </dl>
+                  </Link>
+                );
+              })}
+            </div>
+          </>
         )}
       </div>
     </div>

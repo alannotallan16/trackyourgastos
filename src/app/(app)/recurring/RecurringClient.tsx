@@ -79,7 +79,7 @@ export function RecurringClient({ items, profiles, categories, presets }: Props)
       </div>
 
       <div className="card overflow-hidden p-0">
-        <table className="min-w-full text-sm">
+        <table className="hidden md:table min-w-full text-sm">
           <thead className="bg-slate-50">
             <tr>
               <th className="table-cell text-left text-xs uppercase tracking-wide text-slate-600">Merchant</th>
@@ -150,6 +150,79 @@ export function RecurringClient({ items, profiles, categories, presets }: Props)
             })}
           </tbody>
         </table>
+
+        {/* Mobile card list */}
+        <div className="md:hidden divide-y divide-slate-100">
+          {items.length === 0 && (
+            <p className="px-5 py-8 text-sm text-center text-slate-500">
+              No recurring expenses yet.
+            </p>
+          )}
+          {items.map((r) => {
+            const cat = r.category_id ? catsById.get(r.category_id) : null;
+            return (
+              <div key={r.id} className="px-4 py-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-medium text-brand-navy truncate">{r.merchant}</span>
+                      <Badge color={r.active ? "green" : "gray"}>
+                        {r.active ? "active" : "paused"}
+                      </Badge>
+                    </div>
+                    <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500">
+                      {cat && <Badge color={colorForCategory(cat.name)}>{cat.name}</Badge>}
+                      <span className="capitalize">{r.frequency}</span>
+                      <span>·</span>
+                      <span>Next {formatDate(r.next_due_date)}</span>
+                      <span>·</span>
+                      <span>Paid by {profilesById.get(r.paid_by_user_id)?.display_name ?? "—"}</span>
+                    </div>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <div className="text-sm font-semibold tabular-nums text-brand-navy">
+                      {formatMoney(Number(r.amount), r.currency)}
+                    </div>
+                    <div className="text-[10px] uppercase tracking-wide text-slate-400">
+                      {r.currency}
+                    </div>
+                  </div>
+                </div>
+                <div className="mt-2 -mx-1 flex flex-wrap gap-1 text-xs">
+                  <button
+                    className="px-2 py-1 rounded-md text-brand-green font-medium hover:bg-emerald-50 disabled:opacity-50"
+                    onClick={() => startTransition(() => generateFromRecurring(r.id))}
+                    disabled={pending}
+                  >
+                    Add now
+                  </button>
+                  <button
+                    className="px-2 py-1 rounded-md text-slate-600 hover:bg-slate-100"
+                    onClick={() => setEditing(r)}
+                  >
+                    Edit
+                  </button>
+                  <button
+                    className="px-2 py-1 rounded-md text-slate-600 hover:bg-slate-100"
+                    onClick={() => startTransition(() => toggleRecurringActive(r.id, !r.active))}
+                  >
+                    {r.active ? "Pause" : "Resume"}
+                  </button>
+                  <button
+                    className="px-2 py-1 rounded-md text-brand-danger hover:bg-red-50"
+                    onClick={() => {
+                      if (confirm("Delete this recurring template?")) {
+                        startTransition(() => deleteRecurring(r.id));
+                      }
+                    }}
+                  >
+                    Delete
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </div>
 
       {editing && (

@@ -241,7 +241,7 @@ export function RecurringClient({ items, profiles, categories, presets }: Props)
               </div>
               <div>
                 <label className="label">Amount</label>
-                <input className="input" type="number" step="0.01" value={editing.amount ?? ""} onChange={(e) => setEditing({ ...editing, amount: Number(e.target.value) })} required />
+                <input className="input" type="number" inputMode="decimal" step="0.01" value={editing.amount ?? ""} onChange={(e) => setEditing({ ...editing, amount: Number(e.target.value) })} onFocus={(e) => e.currentTarget.select()} required />
               </div>
               <div>
                 <label className="label">Currency</label>

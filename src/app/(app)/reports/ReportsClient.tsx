@@ -14,6 +14,7 @@ import type { UserBalance } from "@/lib/balances";
 import { formatMoney } from "@/lib/format";
 import { StatCard } from "@/components/ui/StatCard";
 import { FileText, FileSpreadsheet, FileDown, TrendingUp, Wallet, ArrowLeftRight } from "@/components/ui/icons";
+import { DateField } from "@/components/ui/DateField";
 
 interface Props {
   profiles: Profile[];
@@ -176,11 +177,11 @@ export function ReportsClient({ profiles, expenses, splits, batches, batchResult
       <div className="card grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
         <div>
           <label className="label">From</label>
-          <input type="date" className="input" value={from} onChange={(e) => setFrom(e.target.value)} />
+          <DateField value={from} onChange={(e) => setFrom(e.target.value)} placeholder="From date" />
         </div>
         <div>
           <label className="label">To</label>
-          <input type="date" className="input" value={to} onChange={(e) => setTo(e.target.value)} />
+          <DateField value={to} onChange={(e) => setTo(e.target.value)} placeholder="To date" />
         </div>
         <label className="flex items-center gap-2 text-sm text-slate-700">
           <input type="checkbox" checked={includeSettlements} onChange={(e) => setIncludeSettlements(e.target.checked)} className="h-4 w-4 rounded text-brand-green focus:ring-brand-green" />

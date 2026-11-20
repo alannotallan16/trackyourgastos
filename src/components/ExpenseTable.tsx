@@ -5,6 +5,7 @@ import { formatDate, formatMoney } from "@/lib/format";
 import type { Category, Expense, ExpenseSplit, Profile, SettlementBatch } from "@/lib/types";
 import { Badge, colorForCategory } from "@/components/ui/Badge";
 import { ChevronLeft, ChevronRight, Paperclip } from "@/components/ui/icons";
+import { DateField } from "@/components/ui/DateField";
 import { ExpenseDetailDrawer } from "@/components/ExpenseDetailDrawer";
 
 function countActiveFilters(filters: {
@@ -326,8 +327,8 @@ export function ExpenseTable({ expenses, splits, profiles, categories, batches }
         )}
       </div>
       <div className={`card grid grid-cols-2 md:grid-cols-6 gap-2 ${filtersOpen ? "" : "hidden"} md:grid`}>
-        <input type="date" className="input" value={from} onChange={(e) => setFrom(e.target.value)} placeholder="From" />
-        <input type="date" className="input" value={to} onChange={(e) => setTo(e.target.value)} placeholder="To" />
+        <DateField value={from} onChange={(e) => setFrom(e.target.value)} placeholder="From" aria-label="From date" />
+        <DateField value={to} onChange={(e) => setTo(e.target.value)} placeholder="To" aria-label="To date" />
         <select className="input" value={paidBy} onChange={(e) => setPaidBy(e.target.value)}>
           <option value="">Paid by (any)</option>
           {profiles.map((p) => (
@@ -460,7 +461,7 @@ export function ExpenseTable({ expenses, splits, profiles, categories, batches }
                 key={e.id}
                 type="button"
                 onClick={() => setDetailExpenseId(e.id)}
-                className="block w-full text-left px-4 py-3 hover:bg-slate-50"
+                className="block w-full text-left px-4 py-3 hover:bg-slate-50 active:bg-slate-100 transition-colors"
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0 flex-1">
@@ -468,33 +469,36 @@ export function ExpenseTable({ expenses, splits, profiles, categories, batches }
                       <span className="font-medium text-brand-navy truncate">{e.merchant}</span>
                       {e.receipt_file_id && <Paperclip className="h-3.5 w-3.5 text-brand-blue shrink-0" />}
                     </div>
-                    <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500">
-                      <span>{formatDate(e.expense_date)}</span>
-                      <span>·</span>
-                      <span>Paid by {profilesById.get(e.paid_by_user_id)?.display_name ?? "—"}</span>
-                      {cat && <Badge color={colorForCategory(cat.name)} className="ml-1">{cat.name}</Badge>}
+                    <div className="mt-0.5 text-xs text-slate-500">
+                      {formatDate(e.expense_date)} · Paid by{" "}
+                      <span className="text-slate-700">{profilesById.get(e.paid_by_user_id)?.display_name ?? "—"}</span>
+                    </div>
+                    <div className="mt-1 flex items-center gap-1.5 flex-wrap">
+                      {cat && <Badge color={colorForCategory(cat.name)}>{cat.name}</Badge>}
                       <StatusBadge status={aggregateStatus(sp)} />
                     </div>
-                    <div className="mt-2 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-slate-500">
-                      {profiles.map((p) => {
-                        const s = sp.find((x) => x.user_id === p.id);
-                        if (!s) return null;
-                        return (
-                          <span key={p.id} className="tabular-nums">
-                            <span className="text-slate-400">{p.display_name}</span>{" "}
-                            <span className="text-slate-700">{formatMoney(Number(s.calculated_amount), e.currency)}</span>
-                          </span>
-                        );
-                      })}
-                    </div>
                   </div>
-                  <div className="text-right">
+                  <div className="text-right shrink-0">
                     <div className="text-base font-semibold tabular-nums text-brand-navy">
                       {formatMoney(Number(e.total_amount), e.currency)}
                     </div>
                     <div className="text-[10px] uppercase tracking-wide text-slate-400">{e.currency}</div>
                   </div>
                 </div>
+                {/* Per-person shares in a clean 3-column grid */}
+                <dl className="mt-2.5 grid grid-cols-3 gap-1.5 text-xs border-t border-slate-100 pt-2">
+                  {profiles.map((p) => {
+                    const s = sp.find((x) => x.user_id === p.id);
+                    return (
+                      <div key={p.id} className="min-w-0">
+                        <dt className="text-slate-400 text-[10px] uppercase tracking-wide truncate">{p.display_name}</dt>
+                        <dd className="tabular-nums text-slate-700">
+                          {s ? formatMoney(Number(s.calculated_amount), e.currency) : <span className="text-slate-300">—</span>}
+                        </dd>
+                      </div>
+                    );
+                  })}
+                </dl>
               </button>
             );
           })}

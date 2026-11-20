@@ -190,7 +190,7 @@ export default async function DashboardPage() {
             View all <ArrowRight className="h-3.5 w-3.5" />
           </Link>
         </div>
-        <div className="overflow-x-auto">
+        <div className="hidden md:block overflow-x-auto">
           <table className="min-w-full text-sm">
             <thead className="bg-slate-50">
               <tr>
@@ -229,6 +229,44 @@ export default async function DashboardPage() {
               )}
             </tbody>
           </table>
+        </div>
+
+        {/* Mobile card list */}
+        <div className="md:hidden divide-y divide-slate-100 -mx-5 -mb-5">
+          {expenses.length === 0 && (
+            <p className="px-5 py-6 text-center text-sm text-slate-500">
+              No expenses yet.{" "}
+              <Link href="/expenses/new" className="text-brand-green underline">
+                Add your first.
+              </Link>
+            </p>
+          )}
+          {expenses.slice(0, 10).map((e) => {
+            const cat = e.category_id ? categoriesById.get(e.category_id) : null;
+            return (
+              <Link
+                key={e.id}
+                href={`/expenses/${e.id}`}
+                className="flex items-start justify-between gap-3 px-5 py-3 hover:bg-slate-50 active:bg-slate-100"
+              >
+                <div className="min-w-0 flex-1">
+                  <div className="font-medium text-brand-navy truncate">{e.merchant}</div>
+                  <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500">
+                    <span>{formatDate(e.expense_date)}</span>
+                    <span>·</span>
+                    <span>Paid by {profilesById.get(e.paid_by_user_id)?.display_name ?? "—"}</span>
+                    {cat && <Badge color={colorForCategory(cat.name)}>{cat.name}</Badge>}
+                  </div>
+                </div>
+                <div className="text-right">
+                  <div className="text-sm font-semibold tabular-nums text-brand-navy">
+                    {formatMoney(Number(e.total_amount), e.currency)}
+                  </div>
+                  <div className="text-[10px] uppercase tracking-wide text-slate-400">{e.currency}</div>
+                </div>
+              </Link>
+            );
+          })}
         </div>
       </div>
     </div>

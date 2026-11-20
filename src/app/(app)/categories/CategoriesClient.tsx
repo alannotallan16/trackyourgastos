@@ -62,7 +62,7 @@ export function CategoriesClient({ categories, rules }: { categories: Category[]
           When a merchant name contains the keyword, we'll auto-suggest the category.
         </p>
         <form
-          className="grid grid-cols-3 gap-2 mb-3"
+          className="grid grid-cols-1 sm:grid-cols-[1fr_1fr_auto] gap-2 mb-3"
           onSubmit={(e) => {
             e.preventDefault();
             if (!newRule.keyword.trim()) return;
@@ -76,21 +76,22 @@ export function CategoriesClient({ categories, rules }: { categories: Category[]
             });
           }}
         >
-          <input className="input col-span-1" placeholder="keyword" value={newRule.keyword} onChange={(e) => setNewRule({ ...newRule, keyword: e.target.value })} />
-          <select className="input col-span-1" value={newRule.suggested_category_id} onChange={(e) => setNewRule({ ...newRule, suggested_category_id: e.target.value })}>
+          <input className="input" placeholder="keyword" value={newRule.keyword} onChange={(e) => setNewRule({ ...newRule, keyword: e.target.value })} />
+          <select className="input" value={newRule.suggested_category_id} onChange={(e) => setNewRule({ ...newRule, suggested_category_id: e.target.value })}>
             <option value="">— Category —</option>
             {categories.map((c) => (
               <option key={c.id} value={c.id}>{c.name}</option>
             ))}
           </select>
-          <button className="btn-primary text-sm">
+          <button className="btn-primary text-sm w-full sm:w-auto">
             <Plus className="h-4 w-4" />
             Add
           </button>
         </form>
-        <div className="overflow-y-auto max-h-96">
-          <table className="min-w-full text-sm">
-            <thead className="bg-slate-50">
+        <div className="max-h-96 overflow-y-auto">
+          {/* Desktop table */}
+          <table className="hidden md:table min-w-full text-sm">
+            <thead className="bg-slate-50 sticky top-0">
               <tr>
                 <th className="table-cell text-left">Keyword</th>
                 <th className="table-cell text-left">Category</th>
@@ -130,6 +131,41 @@ export function CategoriesClient({ categories, rules }: { categories: Category[]
               )}
             </tbody>
           </table>
+          {/* Mobile list */}
+          <ul className="md:hidden divide-y divide-slate-100">
+            {rules.length === 0 && (
+              <li className="px-1 py-6 text-center text-sm text-slate-500">No rules yet.</li>
+            )}
+            {rules.map((r) => {
+              const cat = r.suggested_category_id ? catById.get(r.suggested_category_id) : null;
+              return (
+                <li key={r.id} className="flex items-center justify-between gap-3 py-2">
+                  <div className="min-w-0 flex items-center gap-2 flex-wrap">
+                    <span className="font-medium text-brand-navy truncate">{r.keyword}</span>
+                    {cat ? (
+                      <Badge color={colorForCategory(cat.name)}>{cat.name}</Badge>
+                    ) : (
+                      <span className="text-slate-400 text-xs">—</span>
+                    )}
+                  </div>
+                  <button
+                    className="shrink-0 rounded-md p-2 text-brand-danger hover:bg-red-50 disabled:opacity-50"
+                    aria-label={`Delete ${r.keyword}`}
+                    onClick={() => {
+                      if (confirm("Delete this rule?"))
+                        start(async () => {
+                          await deleteRule(r.id);
+                          router.refresh();
+                        });
+                    }}
+                    disabled={pending}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
         </div>
       </div>
     </div>

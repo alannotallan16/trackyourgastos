@@ -7,6 +7,24 @@ import { Badge, colorForCategory } from "@/components/ui/Badge";
 import { ChevronLeft, ChevronRight, Paperclip } from "@/components/ui/icons";
 import { ExpenseDetailDrawer } from "@/components/ExpenseDetailDrawer";
 
+function countActiveFilters(filters: {
+  from: string;
+  to: string;
+  paidBy: string;
+  categoryId: string;
+  merchant: string;
+  currency: string;
+}): number {
+  let n = 0;
+  if (filters.from) n++;
+  if (filters.to) n++;
+  if (filters.paidBy) n++;
+  if (filters.categoryId) n++;
+  if (filters.merchant) n++;
+  if (filters.currency) n++;
+  return n;
+}
+
 interface Props {
   expenses: Expense[];
   splits: ExpenseSplit[];
@@ -68,6 +86,8 @@ export function ExpenseTable({ expenses, splits, profiles, categories, batches }
   const [pageSize, setPageSize] = useState<PageSize>(50);
   const [page, setPage] = useState(1);
   const [detailExpenseId, setDetailExpenseId] = useState<string | null>(null);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const activeFilterCount = countActiveFilters({ from, to, paidBy, categoryId, merchant, currency });
 
   const profilesById = useMemo(() => new Map(profiles.map((p) => [p.id, p])), [profiles]);
   const categoriesById = useMemo(() => new Map(categories.map((c) => [c.id, c])), [categories]);
@@ -196,10 +216,11 @@ export function ExpenseTable({ expenses, splits, profiles, categories, batches }
   const firstVisibleIdx = totalRows === 0 ? 0 : startIdx + 1;
 
   // Shared pagination control rendered above and below the table.
+  // Top pagination is hidden on mobile to reduce clutter (bottom one is close enough).
   const paginationBar = (position: "top" | "bottom") => (
     <div
       className={`flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 text-sm text-slate-600 bg-white ${
-        position === "top" ? "border-b border-slate-100" : "border-t border-slate-100"
+        position === "top" ? "hidden md:flex border-b border-slate-100" : "border-t border-slate-100"
       }`}
     >
       <div className="text-xs sm:text-sm">
@@ -274,7 +295,37 @@ export function ExpenseTable({ expenses, splits, profiles, categories, batches }
         })}
       </div>
 
-      <div className="card grid grid-cols-2 md:grid-cols-6 gap-2">
+      {/* Filters — collapsible on mobile, always open on md+ */}
+      <div className="md:hidden flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => setFiltersOpen((o) => !o)}
+          className="flex-1 inline-flex items-center justify-between rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-brand-navy shadow-sm"
+          aria-expanded={filtersOpen}
+        >
+          <span className="font-medium">
+            Filters{activeFilterCount > 0 ? ` · ${activeFilterCount}` : ""}
+          </span>
+          <span className="text-slate-400 text-xs">{filtersOpen ? "Hide" : "Show"}</span>
+        </button>
+        {activeFilterCount > 0 && (
+          <button
+            type="button"
+            onClick={() => {
+              setFrom("");
+              setTo("");
+              setPaidBy("");
+              setCategoryId("");
+              setMerchant("");
+              setCurrency("");
+            }}
+            className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-medium text-slate-600"
+          >
+            Clear
+          </button>
+        )}
+      </div>
+      <div className={`card grid grid-cols-2 md:grid-cols-6 gap-2 ${filtersOpen ? "" : "hidden"} md:grid`}>
         <input type="date" className="input" value={from} onChange={(e) => setFrom(e.target.value)} placeholder="From" />
         <input type="date" className="input" value={to} onChange={(e) => setTo(e.target.value)} placeholder="To" />
         <select className="input" value={paidBy} onChange={(e) => setPaidBy(e.target.value)}>

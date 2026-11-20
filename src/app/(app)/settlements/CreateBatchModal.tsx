@@ -346,7 +346,7 @@ export function CreateBatchModal({ open, onClose, profiles, expenses, splits, ca
           </div>
         </div>
 
-        {/* Expense table */}
+        {/* Expense table (desktop) + card list (mobile) */}
         <div className="flex-1 min-h-0 overflow-auto">
           {filtered.length === 0 ? (
             <div className="h-full flex items-center justify-center px-6 py-12">
@@ -357,77 +357,129 @@ export function CreateBatchModal({ open, onClose, profiles, expenses, splits, ca
               </p>
             </div>
           ) : (
-            <table className="min-w-full text-sm select-none">
-              <thead className="bg-slate-50 sticky top-0 z-10">
-                <tr>
-                  <th className="px-3 py-2 text-left w-10 border-b border-slate-200">
-                    <input
-                      type="checkbox"
-                      aria-label="Select all visible"
-                      ref={(el) => {
-                        if (el) el.indeterminate = someVisibleSelected;
-                      }}
-                      checked={allVisibleSelected}
-                      onChange={(e) => (e.target.checked ? selectAllVisible() : clearAllVisible())}
-                    />
-                  </th>
-                  <th className="px-3 py-2 text-left text-xs uppercase tracking-wide text-slate-600 border-b border-slate-200">Date</th>
-                  <th className="px-3 py-2 text-left text-xs uppercase tracking-wide text-slate-600 border-b border-slate-200">Merchant</th>
-                  <th className="px-3 py-2 text-left text-xs uppercase tracking-wide text-slate-600 border-b border-slate-200">Category</th>
-                  <th className="px-3 py-2 text-left text-xs uppercase tracking-wide text-slate-600 border-b border-slate-200">Paid by</th>
-                  <th className="px-3 py-2 text-right text-xs uppercase tracking-wide text-slate-600 border-b border-slate-200">Total</th>
-                </tr>
-              </thead>
-              <tbody>
+            <>
+              <table className="hidden md:table min-w-full text-sm select-none">
+                <thead className="bg-slate-50 sticky top-0 z-10">
+                  <tr>
+                    <th className="px-3 py-2 text-left w-10 border-b border-slate-200">
+                      <input
+                        type="checkbox"
+                        aria-label="Select all visible"
+                        ref={(el) => {
+                          if (el) el.indeterminate = someVisibleSelected;
+                        }}
+                        checked={allVisibleSelected}
+                        onChange={(e) => (e.target.checked ? selectAllVisible() : clearAllVisible())}
+                      />
+                    </th>
+                    <th className="px-3 py-2 text-left text-xs uppercase tracking-wide text-slate-600 border-b border-slate-200">Date</th>
+                    <th className="px-3 py-2 text-left text-xs uppercase tracking-wide text-slate-600 border-b border-slate-200">Merchant</th>
+                    <th className="px-3 py-2 text-left text-xs uppercase tracking-wide text-slate-600 border-b border-slate-200">Category</th>
+                    <th className="px-3 py-2 text-left text-xs uppercase tracking-wide text-slate-600 border-b border-slate-200">Paid by</th>
+                    <th className="px-3 py-2 text-right text-xs uppercase tracking-wide text-slate-600 border-b border-slate-200">Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.map((e, i) => {
+                    const cat = e.category_id ? categoriesById.get(e.category_id) : null;
+                    const isSelected = selected.has(e.id);
+                    return (
+                      <tr
+                        key={e.id}
+                        onClick={(ev) => {
+                          const target = ev.target as HTMLElement;
+                          if (target.tagName === "INPUT") return;
+                          toggleAt(i, ev.shiftKey);
+                        }}
+                        className={
+                          isSelected
+                            ? "bg-emerald-50 border-l-4 border-brand-green cursor-pointer"
+                            : "border-l-4 border-transparent hover:bg-slate-50 cursor-pointer"
+                        }
+                      >
+                        <td className="px-3 py-2 border-b border-slate-100">
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => toggleAt(i, false)}
+                            onClick={(ev) => {
+                              if (ev.shiftKey) {
+                                ev.preventDefault();
+                                toggleAt(i, true);
+                              }
+                            }}
+                            aria-label={`Include ${e.merchant}`}
+                          />
+                        </td>
+                        <td className="px-3 py-2 whitespace-nowrap text-slate-600 border-b border-slate-100">
+                          {formatDate(e.expense_date)}
+                        </td>
+                        <td className="px-3 py-2 font-medium text-brand-navy border-b border-slate-100">{e.merchant}</td>
+                        <td className="px-3 py-2 border-b border-slate-100">
+                          {cat ? <Badge color={colorForCategory(cat.name)}>{cat.name}</Badge> : <span className="text-slate-400">—</span>}
+                        </td>
+                        <td className="px-3 py-2 text-slate-600 border-b border-slate-100">
+                          {profilesById.get(e.paid_by_user_id)?.display_name ?? "—"}
+                        </td>
+                        <td className="px-3 py-2 text-right tabular-nums font-semibold border-b border-slate-100">
+                          {formatMoney(Number(e.total_amount), e.currency)}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+
+              {/* Mobile card list — large tap targets, no shift-click needed */}
+              <ul className="md:hidden divide-y divide-slate-100 select-none">
                 {filtered.map((e, i) => {
                   const cat = e.category_id ? categoriesById.get(e.category_id) : null;
                   const isSelected = selected.has(e.id);
                   return (
-                    <tr
+                    <li
                       key={e.id}
-                      onClick={(ev) => {
-                        const target = ev.target as HTMLElement;
-                        if (target.tagName === "INPUT") return;
-                        toggleAt(i, ev.shiftKey);
-                      }}
+                      onClick={() => toggleAt(i, false)}
                       className={
                         isSelected
-                          ? "bg-emerald-50 border-l-4 border-brand-green cursor-pointer"
-                          : "border-l-4 border-transparent hover:bg-slate-50 cursor-pointer"
+                          ? "flex items-start gap-3 px-4 py-3 bg-emerald-50 border-l-4 border-brand-green active:bg-emerald-100"
+                          : "flex items-start gap-3 px-4 py-3 border-l-4 border-transparent hover:bg-slate-50 active:bg-slate-100"
                       }
                     >
-                      <td className="px-3 py-2 border-b border-slate-100">
-                        <input
-                          type="checkbox"
-                          checked={isSelected}
-                          onChange={() => toggleAt(i, false)}
-                          onClick={(ev) => {
-                            if (ev.shiftKey) {
-                              ev.preventDefault();
-                              toggleAt(i, true);
-                            }
-                          }}
-                          aria-label={`Include ${e.merchant}`}
-                        />
-                      </td>
-                      <td className="px-3 py-2 whitespace-nowrap text-slate-600 border-b border-slate-100">
-                        {formatDate(e.expense_date)}
-                      </td>
-                      <td className="px-3 py-2 font-medium text-brand-navy border-b border-slate-100">{e.merchant}</td>
-                      <td className="px-3 py-2 border-b border-slate-100">
-                        {cat ? <Badge color={colorForCategory(cat.name)}>{cat.name}</Badge> : <span className="text-slate-400">—</span>}
-                      </td>
-                      <td className="px-3 py-2 text-slate-600 border-b border-slate-100">
-                        {profilesById.get(e.paid_by_user_id)?.display_name ?? "—"}
-                      </td>
-                      <td className="px-3 py-2 text-right tabular-nums font-semibold border-b border-slate-100">
-                        {formatMoney(Number(e.total_amount), e.currency)}
-                      </td>
-                    </tr>
+                      <span
+                        aria-hidden="true"
+                        className={
+                          isSelected
+                            ? "mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-brand-green text-white"
+                            : "mt-0.5 h-5 w-5 shrink-0 rounded-md border-2 border-slate-300 bg-white"
+                        }
+                      >
+                        {isSelected && (
+                          <svg viewBox="0 0 16 16" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M3 8l3.5 3.5L13 5" />
+                          </svg>
+                        )}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium text-brand-navy truncate">{e.merchant}</span>
+                        </div>
+                        <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500">
+                          <span>{formatDate(e.expense_date)}</span>
+                          <span>·</span>
+                          <span>Paid by {profilesById.get(e.paid_by_user_id)?.display_name ?? "—"}</span>
+                          {cat && <Badge color={colorForCategory(cat.name)}>{cat.name}</Badge>}
+                        </div>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <div className="text-sm font-semibold tabular-nums text-brand-navy">
+                          {formatMoney(Number(e.total_amount), e.currency)}
+                        </div>
+                      </div>
+                    </li>
                   );
                 })}
-              </tbody>
-            </table>
+              </ul>
+            </>
           )}
         </div>
 

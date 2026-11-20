@@ -72,12 +72,11 @@ export function SettleUpCard({
     ? openBatchesSorted
     : openBatchesSorted.slice(0, COLLAPSED_ROWS);
 
-  // Match each suggestion (from_user_id, to_user_id) to the oldest open or
-  // partially_paid batch_result with the same from/to pair. That's the row the
-  // user should record the payment against — otherwise the open batch stays
-  // "partially_paid" forever while a fresh batch records the money.
-  function matchingOpenBatchId(fromId: string, toId: string): string | null {
-    const candidates = batchResults
+  // All open or partially-paid batch_results for a from/to pair, oldest first.
+  // The Record button links to the first one; the breakdown underneath lists
+  // all of them so the user can see what makes up the suggestion.
+  function matchingOpenResults(fromId: string, toId: string) {
+    return batchResults
       .filter(
         (r) =>
           r.from_user_id === fromId &&
@@ -86,10 +85,13 @@ export function SettleUpCard({
       )
       .map((r) => {
         const batch = batches.find((b) => b.id === r.settlement_batch_id);
-        return { result: r, created_at: batch?.created_at ?? "9999" };
+        return {
+          result: r,
+          batch_number: batch?.settlement_number ?? "?",
+          created_at: batch?.created_at ?? "9999"
+        };
       })
       .sort((a, b) => a.created_at.localeCompare(b.created_at));
-    return candidates[0]?.result.settlement_batch_id ?? null;
   }
 
   return (
@@ -124,43 +126,76 @@ export function SettleUpCard({
                   const toName = profilesById.get(s.to_user_id)?.display_name ?? "—";
                   const youFrom = meId && s.from_user_id === meId;
                   const youTo = meId && s.to_user_id === meId;
-                  const matchedBatchId = matchingOpenBatchId(s.from_user_id, s.to_user_id);
+                  const matches = matchingOpenResults(s.from_user_id, s.to_user_id);
+                  const matchedRemaining = matches.reduce(
+                    (a, m) => a + Number(m.result.remaining_amount),
+                    0
+                  );
+                  const batchForRecord = matches[0]?.result.settlement_batch_id ?? null;
+                  const newExpenses = Math.max(0, s.amount - matchedRemaining);
                   return (
                     <li
                       key={i}
-                      className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-100 px-3 py-2"
+                      className="rounded-xl border border-slate-100 px-3 py-2 space-y-1.5"
                     >
-                      <span className="flex items-center gap-2 min-w-0 text-sm">
-                        <span className="font-medium text-brand-navy">
-                          {youFrom ? "You" : fromName}
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="flex items-center gap-2 min-w-0 text-sm">
+                          <span className="font-medium text-brand-navy">
+                            {youFrom ? "You" : fromName}
+                          </span>
+                          <ArrowRight className="h-4 w-4 text-slate-400 shrink-0" />
+                          <span className="font-medium text-brand-navy">
+                            {youTo ? "You" : toName}
+                          </span>
                         </span>
-                        <ArrowRight className="h-4 w-4 text-slate-400 shrink-0" />
-                        <span className="font-medium text-brand-navy">
-                          {youTo ? "You" : toName}
+                        <span className="flex items-center gap-2 shrink-0">
+                          <span className="tabular-nums font-semibold text-brand-navy">
+                            {formatMoney(s.amount)}
+                          </span>
+                          {batchForRecord ? (
+                            <Link
+                              href={`/settlements/${batchForRecord}`}
+                              className="inline-flex items-center rounded-md border border-brand-green bg-brand-green/10 px-2.5 py-1 text-xs font-medium text-brand-green hover:bg-brand-green/20"
+                              title="Record against the earliest matching open batch."
+                            >
+                              Record
+                            </Link>
+                          ) : (
+                            <Link
+                              href="/settlements"
+                              className="inline-flex items-center rounded-md border border-slate-300 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                              title="No open batch for this pair yet — Create settlement to make one."
+                            >
+                              Create batch
+                            </Link>
+                          )}
                         </span>
-                      </span>
-                      <span className="flex items-center gap-2 shrink-0">
-                        <span className="tabular-nums font-semibold text-brand-navy">
-                          {formatMoney(s.amount)}
-                        </span>
-                        {matchedBatchId ? (
-                          <Link
-                            href={`/settlements/${matchedBatchId}`}
-                            className="text-xs font-medium text-brand-green hover:underline"
-                            title="Open the earliest matching settlement batch to record a payment against it."
-                          >
-                            Record
-                          </Link>
-                        ) : (
-                          <Link
-                            href="/settlements"
-                            className="text-xs font-medium text-brand-blue hover:underline"
-                            title="No open batch for this pair yet — create a new settlement first."
-                          >
-                            Create batch
-                          </Link>
-                        )}
-                      </span>
+                      </div>
+                      {/* Breakdown: show which open batch_results make up this suggestion. */}
+                      {matches.length > 0 && (
+                        <p className="text-[11px] text-slate-500">
+                          {matches.length === 1
+                            ? `${matches[0].batch_number} still shows `
+                            : `Open batches `}
+                          {matches.map((m, mi) => (
+                            <span key={m.result.id} className="tabular-nums">
+                              {matches.length > 1 && (
+                                <strong className="text-slate-600">{m.batch_number} </strong>
+                              )}
+                              {formatMoney(Number(m.result.remaining_amount))}
+                              {mi < matches.length - 1 ? " · " : ""}
+                            </span>
+                          ))}
+                          {newExpenses > 0.01 && (
+                            <> · new since then {formatMoney(newExpenses)}</>
+                          )}
+                        </p>
+                      )}
+                      {matches.length === 0 && (
+                        <p className="text-[11px] text-slate-500">
+                          No open batch for this pair; this is all from unsettled expenses.
+                        </p>
+                      )}
                     </li>
                   );
                 })}
@@ -176,6 +211,27 @@ export function SettleUpCard({
                     : `See all ${suggestions.length} suggested payments`}
                 </button>
               )}
+              <details className="mt-3 text-[11px] text-slate-500">
+                <summary className="cursor-pointer hover:text-slate-700">
+                  How does Record handle the amount?
+                </summary>
+                <ul className="mt-1.5 list-disc list-inside space-y-1 text-[11px] text-slate-500">
+                  <li>
+                    <strong>Less than the batch's remaining</strong>: accepted as a partial
+                    payment. The batch stays "partially paid."
+                  </li>
+                  <li>
+                    <strong>Equal to the batch's remaining</strong>: accepted. The batch result
+                    is marked fully paid, and the batch rolls up to "paid" once every result is.
+                  </li>
+                  <li>
+                    <strong>More than the batch's remaining</strong>: blocked with a
+                    "Payment exceeds remaining balance" error. Split the amount across
+                    multiple batches, or clear this batch first and create a new one for the
+                    remainder.
+                  </li>
+                </ul>
+              </details>
             </section>
           )}
 

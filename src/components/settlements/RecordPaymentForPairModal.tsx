@@ -123,23 +123,31 @@ export function RecordPaymentForPairModal({
   async function submitPreview() {
     setErr(null);
     start(async () => {
-      try {
-        const r = await recordPaymentForPair({
-          from_user_id: fromId,
-          to_user_id: toId,
-          amount: amountNum,
-          payment_date: paymentDate,
-          payment_method: method || null,
-          notes: notes || null,
-          reference_number: reference || null,
-          attachment_path: null,
-          preview_only: true
-        });
-        setPreview({ pair_open: r.pair_open, allocation: r.allocation, amount: r.amount });
-        setStep(2);
-      } catch (e: any) {
-        setErr(e?.message ?? "Failed to compute preview.");
+      const r = await recordPaymentForPair({
+        from_user_id: fromId,
+        to_user_id: toId,
+        amount: amountNum,
+        payment_date: paymentDate,
+        payment_method: method || null,
+        notes: notes || null,
+        reference_number: reference || null,
+        attachment_path: null,
+        preview_only: true
+      });
+      if (!r.ok) {
+        setErr(r.error);
+        return;
       }
+      if (!r.data) {
+        setErr("Preview returned no data.");
+        return;
+      }
+      setPreview({
+        pair_open: r.data.pair_open,
+        allocation: r.data.allocation,
+        amount: r.data.amount
+      });
+      setStep(2);
     });
   }
 
@@ -169,23 +177,23 @@ export function RecordPaymentForPairModal({
     }
 
     start(async () => {
-      try {
-        await recordPaymentForPair({
-          from_user_id: fromId,
-          to_user_id: toId,
-          amount: amountNum,
-          payment_date: paymentDate,
-          payment_method: method || null,
-          notes: notes || null,
-          reference_number: reference || null,
-          attachment_path,
-          preview_only: false
-        });
-        onClose();
-        router.refresh();
-      } catch (e: any) {
-        setErr(e?.message ?? "Failed to record payment.");
+      const r = await recordPaymentForPair({
+        from_user_id: fromId,
+        to_user_id: toId,
+        amount: amountNum,
+        payment_date: paymentDate,
+        payment_method: method || null,
+        notes: notes || null,
+        reference_number: reference || null,
+        attachment_path,
+        preview_only: false
+      });
+      if (!r.ok) {
+        setErr(r.error);
+        return;
       }
+      onClose();
+      router.refresh();
     });
   }
 

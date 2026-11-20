@@ -335,24 +335,49 @@ const ReconcileSchema = z.object({
 
 export type ReconcileBatchRowsPayload = z.infer<typeof ReconcileSchema>;
 
-export async function reconcileBatchRows(payload: ReconcileBatchRowsPayload) {
-  const parsed = ReconcileSchema.parse(payload);
+export type ActionResult<T = undefined> =
+  | { ok: true; data?: T }
+  | { ok: false; error: string };
+
+/**
+ * Server actions can throw, but Next.js's production boundary replaces any
+ * thrown message with a generic "Server Components error" digest. That hides
+ * the real failure (RPC errors, overpay messages, auth failures) from the
+ * user. So we return typed results instead — the modal / dialog UI shows
+ * `error` inline; throwing is reserved for truly unexpected failures.
+ */
+export async function reconcileBatchRows(
+  payload: ReconcileBatchRowsPayload
+): Promise<ActionResult> {
+  let parsed: ReconcileBatchRowsPayload;
+  try {
+    parsed = ReconcileSchema.parse(payload);
+  } catch (e: any) {
+    return { ok: false, error: e?.issues?.[0]?.message ?? e?.message ?? "Invalid input." };
+  }
+
   const supabase = createClient();
   const {
     data: { user }
   } = await supabase.auth.getUser();
-  if (!user) throw new Error("Not authenticated.");
+  if (!user) return { ok: false, error: "Not signed in." };
 
   const { error } = await supabase.rpc("reconcile_batch_rows", {
     p_batch_id: parsed.batch_id,
     p_result_ids: parsed.result_ids
   });
-  if (error) throw new Error(error.message);
+  if (error) {
+    return {
+      ok: false,
+      error: error.message || "Failed to reconcile — the server returned an empty error."
+    };
+  }
 
   revalidatePath("/settlements");
   revalidatePath(`/settlements/${parsed.batch_id}`);
   revalidatePath("/expenses");
   revalidatePath("/dashboard");
+  return { ok: true };
 }
 
 // ---------------------------------------------------------------------------
@@ -394,27 +419,50 @@ export interface PairPaymentResult {
 
 export async function recordPaymentForPair(
   payload: RecordPaymentForPairPayload
-): Promise<PairPaymentResult> {
-  const parsed = PairPaymentSchema.parse(payload);
+): Promise<ActionResult<PairPaymentResult>> {
+  let parsed: RecordPaymentForPairPayload;
+  try {
+    parsed = PairPaymentSchema.parse(payload);
+  } catch (e: any) {
+    return { ok: false, error: e?.issues?.[0]?.message ?? e?.message ?? "Invalid input." };
+  }
+
   const supabase = createClient();
   const {
     data: { user }
   } = await supabase.auth.getUser();
-  if (!user) throw new Error("Not authenticated.");
+  if (!user) return { ok: false, error: "Not signed in." };
 
   const { data, error } = await supabase.rpc("record_payment_for_pair", {
     p_from_user_id: parsed.from_user_id,
     p_to_user_id: parsed.to_user_id,
     p_amount: parsed.amount,
     p_payment_date: parsed.payment_date,
-    p_payment_method: parsed.payment_method ?? null,
-    p_notes: parsed.notes ?? null,
-    p_reference_number: parsed.reference_number ?? null,
-    p_attachment_path: parsed.attachment_path ?? null,
+    // Explicit null for blanks — PostgREST treats missing keys as
+    // "use default" (we have none), but null maps to SQL NULL.
+    p_payment_method: parsed.payment_method && parsed.payment_method.length > 0
+      ? parsed.payment_method
+      : null,
+    p_notes: parsed.notes && parsed.notes.length > 0 ? parsed.notes : null,
+    p_reference_number:
+      parsed.reference_number && parsed.reference_number.length > 0
+        ? parsed.reference_number
+        : null,
+    p_attachment_path:
+      parsed.attachment_path && parsed.attachment_path.length > 0
+        ? parsed.attachment_path
+        : null,
     p_created_by: user.id,
     p_preview_only: parsed.preview_only
   });
-  if (error) throw new Error(error.message);
+  if (error) {
+    return {
+      ok: false,
+      // Surface the RPC's exact message (overpay, not-household-member,
+      // missing-function, etc.) rather than Next's stock generic error.
+      error: error.message || "The server returned an empty error."
+    };
+  }
 
   if (!parsed.preview_only) {
     revalidatePath("/settlements");
@@ -422,7 +470,7 @@ export async function recordPaymentForPair(
     revalidatePath("/dashboard");
   }
 
-  return data as PairPaymentResult;
+  return { ok: true, data: data as PairPaymentResult };
 }
 
 // ---------------------------------------------------------------------------

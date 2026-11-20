@@ -13,6 +13,43 @@ import type {
   SplitPreset
 } from "./types";
 
+// -----------------------------------------------------------------------------
+// Pagination helper
+//
+// Supabase projects set a `maxRows` cap (1000 by default) on any single
+// select() call. Any `.from("…").select("*")` that could return more rows than
+// that silently truncates — and when expense_splits truncates, computeBalances
+// miscounts `owed` and the dashboard's Σ(nets) stops summing to zero. Every
+// fetch below that can grow large goes through fetchAll() so we page through
+// the whole table.
+// -----------------------------------------------------------------------------
+type QueryBuilder<T> = {
+  range: (from: number, to: number) => QueryBuilder<T>;
+  then: (cb: (r: { data: T[] | null; error: unknown }) => unknown) => Promise<void>;
+};
+
+async function fetchAll<T>(
+  build: () => QueryBuilder<T>,
+  pageSize = 1000
+): Promise<T[]> {
+  const out: T[] = [];
+  let from = 0;
+  // Safety: cap total pages so a runaway loop can't exhaust memory.
+  for (let page = 0; page < 200; page++) {
+    const { data, error } = (await build().range(from, from + pageSize - 1)) as unknown as {
+      data: T[] | null;
+      error: unknown;
+    };
+    if (error || !data) break;
+    out.push(...data);
+    if (data.length < pageSize) break;
+    from += pageSize;
+  }
+  return out;
+}
+
+// -----------------------------------------------------------------------------
+
 export async function getProfiles(): Promise<Profile[]> {
   const supabase = createClient();
   const { data } = await supabase.from("profiles").select("*").order("display_name");
@@ -43,38 +80,43 @@ export async function getMerchantRules(): Promise<MerchantRule[]> {
 
 export async function getExpenses(): Promise<Expense[]> {
   const supabase = createClient();
-  const { data } = await supabase.from("expenses").select("*").order("expense_date", { ascending: false });
-  return (data as Expense[]) ?? [];
+  return fetchAll<Expense>(() =>
+    supabase.from("expenses").select("*").order("expense_date", { ascending: false }) as unknown as QueryBuilder<Expense>
+  );
 }
 
 export async function getExpenseSplits(): Promise<ExpenseSplit[]> {
   const supabase = createClient();
-  const { data } = await supabase.from("expense_splits").select("*");
-  return (data as ExpenseSplit[]) ?? [];
+  return fetchAll<ExpenseSplit>(() =>
+    supabase.from("expense_splits").select("*") as unknown as QueryBuilder<ExpenseSplit>
+  );
 }
 
 export async function getSettlementBatches(): Promise<SettlementBatch[]> {
   const supabase = createClient();
-  const { data } = await supabase
-    .from("settlement_batches")
-    .select("*")
-    .order("created_at", { ascending: false });
-  return (data as SettlementBatch[]) ?? [];
+  return fetchAll<SettlementBatch>(() =>
+    supabase
+      .from("settlement_batches")
+      .select("*")
+      .order("created_at", { ascending: false }) as unknown as QueryBuilder<SettlementBatch>
+  );
 }
 
 export async function getSettlementBatchResults(): Promise<SettlementBatchResult[]> {
   const supabase = createClient();
-  const { data } = await supabase.from("settlement_batch_results").select("*");
-  return (data as SettlementBatchResult[]) ?? [];
+  return fetchAll<SettlementBatchResult>(() =>
+    supabase.from("settlement_batch_results").select("*") as unknown as QueryBuilder<SettlementBatchResult>
+  );
 }
 
 export async function getSettlementPayments(): Promise<SettlementPayment[]> {
   const supabase = createClient();
-  const { data } = await supabase
-    .from("settlement_payments")
-    .select("*")
-    .order("payment_date", { ascending: false });
-  return (data as SettlementPayment[]) ?? [];
+  return fetchAll<SettlementPayment>(() =>
+    supabase
+      .from("settlement_payments")
+      .select("*")
+      .order("payment_date", { ascending: false }) as unknown as QueryBuilder<SettlementPayment>
+  );
 }
 
 export async function getBatchDetail(id: string): Promise<{
@@ -84,29 +126,34 @@ export async function getBatchDetail(id: string): Promise<{
   payments: SettlementPayment[];
 }> {
   const supabase = createClient();
-  const [b, i, r] = await Promise.all([
+  const [b, items, results] = await Promise.all([
     supabase.from("settlement_batches").select("*").eq("id", id).maybeSingle(),
-    supabase.from("settlement_batch_items").select("*").eq("settlement_batch_id", id),
-    supabase
-      .from("settlement_batch_results")
-      .select("*")
-      .eq("settlement_batch_id", id)
-      .order("amount", { ascending: false })
+    fetchAll<SettlementBatchItem>(() =>
+      supabase.from("settlement_batch_items").select("*").eq("settlement_batch_id", id) as unknown as QueryBuilder<SettlementBatchItem>
+    ),
+    fetchAll<SettlementBatchResult>(() =>
+      supabase
+        .from("settlement_batch_results")
+        .select("*")
+        .eq("settlement_batch_id", id)
+        .order("amount", { ascending: false }) as unknown as QueryBuilder<SettlementBatchResult>
+    )
   ]);
-  const resultIds = (r.data ?? []).map((x: any) => x.id);
+  const resultIds = results.map((x) => x.id);
   let payments: SettlementPayment[] = [];
   if (resultIds.length > 0) {
-    const { data: p } = await supabase
-      .from("settlement_payments")
-      .select("*")
-      .in("settlement_batch_result_id", resultIds)
-      .order("payment_date", { ascending: false });
-    payments = (p as SettlementPayment[]) ?? [];
+    payments = await fetchAll<SettlementPayment>(() =>
+      supabase
+        .from("settlement_payments")
+        .select("*")
+        .in("settlement_batch_result_id", resultIds)
+        .order("payment_date", { ascending: false }) as unknown as QueryBuilder<SettlementPayment>
+    );
   }
   return {
     batch: (b.data as SettlementBatch) ?? null,
-    items: (i.data as SettlementBatchItem[]) ?? [],
-    results: (r.data as SettlementBatchResult[]) ?? [],
+    items,
+    results,
     payments
   };
 }

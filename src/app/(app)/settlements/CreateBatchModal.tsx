@@ -7,6 +7,7 @@ import { computeHouseholdNet, settlementSuggestions } from "@/lib/balances";
 import { formatDate, formatMoney } from "@/lib/format";
 import type { Category, Expense, ExpenseSplit, Profile } from "@/lib/types";
 import { Badge, colorForCategory } from "@/components/ui/Badge";
+import { DateField } from "@/components/ui/DateField";
 import { ArrowRight, X } from "@/components/ui/icons";
 
 interface Props {
@@ -56,6 +57,10 @@ export function CreateBatchModal({ open, onClose, profiles, expenses, splits, ca
   const anchorRef = useRef<number | null>(null);
   const [pending, start] = useTransition();
   const [err, setErr] = useState<string | null>(null);
+  // Mobile-only collapsible sections so the expense list has room to breathe.
+  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
+  const [mobileSummaryOpen, setMobileSummaryOpen] = useState(false);
+  const [mobileNotesOpen, setMobileNotesOpen] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -66,6 +71,9 @@ export function CreateBatchModal({ open, onClose, profiles, expenses, splits, ca
     setFilterCategory("");
     setFilterMerchant("");
     setFilterPayer("");
+    setMobileFiltersOpen(false);
+    setMobileSummaryOpen(false);
+    setMobileNotesOpen(false);
     setErr(null);
     anchorRef.current = null;
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -215,48 +223,100 @@ export function CreateBatchModal({ open, onClose, profiles, expenses, splits, ca
           </button>
         </div>
 
+        {/* Mobile-only filter toggle */}
+        {(() => {
+          const activeFilterCount =
+            (filterFrom ? 1 : 0) +
+            (filterTo ? 1 : 0) +
+            (filterCategory ? 1 : 0) +
+            (filterPayer ? 1 : 0) +
+            (filterMerchant.trim() ? 1 : 0);
+          return (
+            <div className="md:hidden flex items-center gap-2 px-4 py-2 border-b border-slate-100 bg-slate-50/60">
+              <button
+                type="button"
+                onClick={() => setMobileFiltersOpen((o) => !o)}
+                className="flex-1 inline-flex items-center justify-between rounded-lg bg-white border border-slate-200 px-3 py-2 text-sm text-brand-navy"
+                aria-expanded={mobileFiltersOpen}
+              >
+                <span className="font-medium">
+                  Filters{activeFilterCount > 0 ? ` · ${activeFilterCount}` : ""}
+                </span>
+                <span className="text-slate-400 text-xs">{mobileFiltersOpen ? "Hide" : "Show"}</span>
+              </button>
+              {activeFilterCount > 0 && (
+                <button
+                  type="button"
+                  onClick={resetFilters}
+                  className="rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs font-medium text-slate-600"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+          );
+        })()}
+
         {/* Filters */}
-        <div className="px-5 py-3 border-b border-slate-100 bg-slate-50/60 grid grid-cols-2 md:grid-cols-5 gap-2">
-          <div>
-            <label className="label">From date</label>
-            <input className="input" type="date" value={filterFrom} onChange={(e) => setFilterFrom(e.target.value)} />
-          </div>
-          <div>
-            <label className="label">To date</label>
-            <input className="input" type="date" value={filterTo} onChange={(e) => setFilterTo(e.target.value)} />
-          </div>
-          <div>
-            <label className="label">Category</label>
-            <select className="input" value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)}>
-              <option value="">All</option>
-              {categories.map((c) => (
-                <option key={c.id} value={c.id}>{c.name}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="label">Paid by</label>
-            <select className="input" value={filterPayer} onChange={(e) => setFilterPayer(e.target.value)}>
-              <option value="">Anyone</option>
-              {profiles.map((p) => (
-                <option key={p.id} value={p.id}>{p.display_name}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="label">Merchant</label>
-            <input
-              className="input"
-              type="text"
-              value={filterMerchant}
-              onChange={(e) => setFilterMerchant(e.target.value)}
-              placeholder="Search"
-            />
+        <div className={`${mobileFiltersOpen ? "" : "hidden"} md:block px-5 py-3 border-b border-slate-100 bg-slate-50/60`}>
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+            <div>
+              <label className="label">From date</label>
+              <DateField value={filterFrom} onChange={(e) => setFilterFrom(e.target.value)} placeholder="From date" />
+            </div>
+            <div>
+              <label className="label">To date</label>
+              <DateField value={filterTo} onChange={(e) => setFilterTo(e.target.value)} placeholder="To date" />
+            </div>
+            <div>
+              <label className="label">Category</label>
+              <select className="input" value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)}>
+                <option value="">All</option>
+                {categories.map((c) => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="label">Paid by</label>
+              <select className="input" value={filterPayer} onChange={(e) => setFilterPayer(e.target.value)}>
+                <option value="">Anyone</option>
+                {profiles.map((p) => (
+                  <option key={p.id} value={p.id}>{p.display_name}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="label">Merchant</label>
+              <input
+                className="input"
+                type="text"
+                value={filterMerchant}
+                onChange={(e) => setFilterMerchant(e.target.value)}
+                placeholder="Search"
+              />
+            </div>
           </div>
         </div>
 
+        {/* Mobile-only summary toggle */}
+        <div className="md:hidden flex items-center gap-2 px-4 py-2 border-b border-slate-100 bg-emerald-50/40">
+          <button
+            type="button"
+            onClick={() => setMobileSummaryOpen((o) => !o)}
+            className="flex-1 inline-flex items-center justify-between rounded-lg bg-white border border-slate-200 px-3 py-2 text-sm text-brand-navy"
+            aria-expanded={mobileSummaryOpen}
+          >
+            <span className="font-medium">
+              {selected.size} selected · {preview.suggestions.length} payment
+              {preview.suggestions.length === 1 ? "" : "s"}
+            </span>
+            <span className="text-slate-400 text-xs">{mobileSummaryOpen ? "Hide" : "Show"}</span>
+          </button>
+        </div>
+
         {/* Sticky summary */}
-        <div className="px-5 py-3 border-b border-slate-200 bg-emerald-50/40 space-y-2">
+        <div className={`${mobileSummaryOpen ? "" : "hidden"} md:block px-5 py-3 border-b border-slate-200 bg-emerald-50/40 space-y-2`}>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div className="rounded-xl bg-white border border-slate-200 px-3 py-2">
               <div className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1.5">Household net (selected)</div>
@@ -309,40 +369,46 @@ export function CreateBatchModal({ open, onClose, profiles, expenses, splits, ca
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-            <div className="flex flex-wrap items-center gap-x-4">
-              <span>
-                <span className="text-slate-500">Selected:</span>{" "}
-                <strong className="text-brand-navy tabular-nums">{selected.size}</strong>
-                {hiddenSelected > 0 && (
-                  <span className="text-slate-500 ml-1">({hiddenSelected} hidden by filters)</span>
-                )}
-              </span>
-              <span className="text-slate-500">
-                Showing {filtered.length} of {eligibleExpenses.length} unsettled expense{eligibleExpenses.length === 1 ? "" : "s"}
-              </span>
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                className="btn-secondary !py-1 !px-3 text-xs"
-                onClick={selectAllVisible}
-                disabled={filtered.length === 0 || allVisibleSelected}
-              >
-                Select all visible
-              </button>
-              <button
-                type="button"
-                className="btn-secondary !py-1 !px-3 text-xs"
-                onClick={clearAllVisible}
-                disabled={visibleSelectedCount === 0}
-              >
-                Clear visible
-              </button>
-              <button type="button" className="btn-ghost !py-1 !px-3 text-xs" onClick={resetFilters}>
-                Reset filters
-              </button>
-            </div>
+        </div>
+
+        {/* Bulk action bar — always visible on both desktop and mobile */}
+        <div className="px-4 md:px-5 py-2 border-b border-slate-100 bg-white flex flex-wrap items-center justify-between gap-2 text-xs">
+          <div className="hidden md:flex items-center gap-x-3 text-slate-500 flex-wrap">
+            <span>
+              Selected:{" "}
+              <strong className="text-brand-navy tabular-nums">{selected.size}</strong>
+              {hiddenSelected > 0 && (
+                <span className="ml-1">({hiddenSelected} hidden by filters)</span>
+              )}
+            </span>
+            <span>
+              Showing {filtered.length} of {eligibleExpenses.length} unsettled expense{eligibleExpenses.length === 1 ? "" : "s"}
+            </span>
+          </div>
+          <div className="flex items-center gap-1.5 w-full md:w-auto">
+            <button
+              type="button"
+              className="btn-secondary !py-1 !px-2.5 text-xs flex-1 md:flex-none"
+              onClick={selectAllVisible}
+              disabled={filtered.length === 0 || allVisibleSelected}
+            >
+              Select all
+            </button>
+            <button
+              type="button"
+              className="btn-secondary !py-1 !px-2.5 text-xs flex-1 md:flex-none"
+              onClick={clearAllVisible}
+              disabled={visibleSelectedCount === 0}
+            >
+              Clear
+            </button>
+            <button
+              type="button"
+              className="btn-ghost !py-1 !px-2.5 text-xs flex-1 md:flex-none"
+              onClick={resetFilters}
+            >
+              Reset
+            </button>
           </div>
         </div>
 
@@ -484,9 +550,11 @@ export function CreateBatchModal({ open, onClose, profiles, expenses, splits, ca
         </div>
 
         {/* Footer */}
-        <div className="px-5 py-3 border-t border-slate-200 bg-white">
+        <div className="px-4 md:px-5 py-3 border-t border-slate-200 bg-white pb-[max(env(safe-area-inset-bottom),0.75rem)]">
           {err && <p className="text-sm text-brand-danger mb-2">{err}</p>}
-          <div className="flex flex-col md:flex-row md:items-end gap-3">
+
+          {/* Desktop: inline notes + buttons */}
+          <div className="hidden md:flex md:items-end gap-3">
             <div className="flex-1">
               <label className="label">Notes (optional)</label>
               <input
@@ -498,7 +566,7 @@ export function CreateBatchModal({ open, onClose, profiles, expenses, splits, ca
               />
             </div>
             <div className="flex items-center gap-2 self-end">
-              <span className="hidden md:inline text-xs text-slate-500 mr-2">
+              <span className="text-xs text-slate-500 mr-2">
                 Tip: shift-click to select a range
               </span>
               <button type="button" className="btn-secondary" onClick={onClose} disabled={pending}>
@@ -510,6 +578,40 @@ export function CreateBatchModal({ open, onClose, profiles, expenses, splits, ca
                   : preview.suggestions.length === 0
                     ? "Create settlement"
                     : `Create settlement (${preview.suggestions.length} payment${preview.suggestions.length === 1 ? "" : "s"})`}
+              </button>
+            </div>
+          </div>
+
+          {/* Mobile: collapsible notes + stacked buttons */}
+          <div className="md:hidden space-y-2">
+            {!mobileNotesOpen ? (
+              <button
+                type="button"
+                onClick={() => setMobileNotesOpen(true)}
+                className="w-full text-left text-xs text-brand-green font-medium"
+              >
+                {notes ? `Notes: ${notes}` : "+ Add notes (optional)"}
+              </button>
+            ) : (
+              <input
+                className="input"
+                type="text"
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="e.g. End-of-month reconciliation"
+                autoFocus
+              />
+            )}
+            <div className="flex gap-2">
+              <button type="button" className="btn-secondary flex-1" onClick={onClose} disabled={pending}>
+                Cancel
+              </button>
+              <button className="btn-primary flex-1" disabled={pending || preview.suggestions.length === 0}>
+                {pending
+                  ? "Creating…"
+                  : preview.suggestions.length === 0
+                    ? "Create"
+                    : `Create (${preview.suggestions.length})`}
               </button>
             </div>
           </div>

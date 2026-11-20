@@ -9,6 +9,34 @@
 html,
 body {
   @apply bg-brand-bg text-brand-navy;
+  /* Prefer explicit active: / hover: states over the default grey rectangle
+     iOS Safari paints on tap, which looks jarring on cards and modal rows. */
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Explicit active feedback on tappable surfaces for iOS Safari.
+   Buttons/links use Tailwind active: utilities; this catches generic
+   [role="button"] and <tr> onClick rows where there's no utility class. */
+tr[onClick],
+tr.cursor-pointer {
+  touch-action: manipulation;
+}
+tr.cursor-pointer:active {
+  background-color: rgb(241 245 249); /* slate-100 */
+}
+
+/* Prevent iOS from zooming when focusing an input — happens below 16px font */
+input,
+select,
+textarea {
+  font-size: max(16px, 1rem);
+}
+@media (min-width: 768px) {
+  input,
+  select,
+  textarea {
+    font-size: 0.875rem; /* text-sm on desktop */
+  }
 }
 
 .input {

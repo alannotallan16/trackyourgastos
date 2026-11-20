@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { formatDate, formatMoney } from "@/lib/format";
 import type {
@@ -38,6 +39,7 @@ export function SettlementsClient({
   batchResults,
   balances
 }: Props) {
+  const router = useRouter();
   const profilesById = useMemo(() => new Map(profiles.map((p) => [p.id, p])), [profiles]);
   const [open, setOpen] = useState(false);
 
@@ -144,7 +146,11 @@ export function SettlementsClient({
                 {openBatches.map((b) => {
                   const t = batchTotals(b.id);
                   return (
-                    <tr key={b.id} className="hover:bg-slate-50">
+                    <tr
+                      key={b.id}
+                      onClick={() => router.push(`/settlements/${b.id}`)}
+                      className="hover:bg-slate-50 cursor-pointer transition-colors"
+                    >
                       <td className="table-cell">
                         <Link className="font-medium text-brand-navy hover:text-brand-green" href={`/settlements/${b.id}`}>
                           {b.settlement_number}
@@ -224,7 +230,11 @@ export function SettlementsClient({
                 {historyBatches.map((b) => {
                   const t = batchTotals(b.id);
                   return (
-                    <tr key={b.id} className="hover:bg-slate-50">
+                    <tr
+                      key={b.id}
+                      onClick={() => router.push(`/settlements/${b.id}`)}
+                      className="hover:bg-slate-50 cursor-pointer transition-colors"
+                    >
                       <td className="table-cell">
                         <Link className="font-medium text-brand-navy hover:text-brand-green" href={`/settlements/${b.id}`}>
                           {b.settlement_number}

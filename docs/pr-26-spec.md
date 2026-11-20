@@ -300,8 +300,16 @@ begin
 end;
 $$;
 
--- 7. Grant execute on the two RPCs to authenticated users ------------------
+-- 7. Lock down anon, grant only authenticated users --------------------------
+-- rollup_batch_status is internal; callers never invoke it directly.
+revoke all on function public.rollup_batch_status(uuid) from public, anon;
+
+revoke all on function public.reconcile_batch_rows(uuid, uuid[]) from public, anon;
 grant execute on function public.reconcile_batch_rows(uuid, uuid[]) to authenticated;
+
+revoke all on function public.record_payment_for_pair(
+  uuid, uuid, numeric, date, text, text, text, text, uuid, boolean
+) from public, anon;
 grant execute on function public.record_payment_for_pair(
   uuid, uuid, numeric, date, text, text, text, text, uuid, boolean
 ) to authenticated;
@@ -379,25 +387,30 @@ export async function recordPaymentForPair(payload: {
 
 Zod schema mirrors the inputs. On preview_only return, no revalidate. On real, revalidate the same set as `recordPayment`.
 
-## 5. Record modal — two-step preview-before-save
+## 5. Record payment modal — two-step preview-before-save
 
-New `src/components/settlements/RecordPaymentForPairModal.tsx` (client).
+New `src/components/settlements/RecordPaymentForPairModal.tsx` (client). **Two entry points**, both open the same modal:
 
-- **Step 1 — form:**
-  - Pair (pre-filled when launched from a Settle Up suggestion; read-only chip showing `From → To`).
-  - **Amount — editable `<input type="number">`, pre-filled with `min(pair_open, suggestion.amount)`**. The user can type any positive value up to `pair_open`. Over-the-cap input is blocked client-side with a helper text `Max ₱X.XX (pair's open total)`; the RPC also hard-blocks it server-side with the same copy as item 4. Supports installment payments (Cel paying ₱20k now, ₱18k next week).
-  - Date (defaults today).
-  - Payment method — datalist from #7.
-  - Optional notes / reference / attachment.
-- **Step 2 — preview:** table from the allocation returned by `recordPaymentForPair({preview_only: true})`. Example:
+- **A. From a Settle Up suggestion row** — pair pre-filled, read-only chip at top. Amount pre-filled with `min(pair_open, suggestion.amount)`.
+- **B. From the standalone "Record payment" button on Settle Up (new in item 10)** — the top of Step 1 shows a `<select>` for payer and a `<select>` for payee (both bound to `profiles`, with the "same person both sides" combo blocked). On pair change, amount pre-fills with that pair's `pair_open` (computed client-side from the already-loaded `batchResults` prop — the RPC re-validates server-side so a stale client value can't bypass). If the pair has no open obligation, the form shows an inline error `"No open obligation for <A> → <B>. Create a settlement first."` and disables Preview.
+
+Step 1 — form:
+- Pair chip (variant A) or pair picker (variant B).
+- **Amount** — editable `<input type="number" inputMode="decimal">`, pre-filled as above. Any positive value up to `pair_open` accepted. Over-the-cap input is blocked client-side with helper text `Max ₱X.XX (pair's open total)`; the RPC also hard-blocks server-side with the item 4 copy. Supports installment payments (Cel paying ₱20k now, ₱18k next week).
+- Date (defaults today).
+- Payment method — datalist from #7.
+- Optional notes / reference / attachment.
+
+Step 2 — preview:
+- Submits inputs to `recordPaymentForPair({preview_only: true})` — **the RPC itself** returns the allocation. The UI does **not** reimplement the loop; it just renders the JSON that comes back.
+- Rendered table:
   ```
   ST-0011 Cel→Len   apply ₱30,000.00   was ₱60,000.00 → will leave ₱30,000.00
-  ST-0014 Cel→Alan  apply ₱0.00        (skipped — amount exhausted earlier)   ← not shown
+  ST-0014 Cel→Len   apply ₱5,000.00    was ₱5,000.00  → will leave ₱0.00
   ```
-  Only rows that received an allocation render. **No NEW BATCH row anywhere in the preview** (removed per item 4 change).
+  Only rows that received an allocation render. **No NEW BATCH row anywhere** (removed per item 4).
 - **Back** returns to Step 1 without losing input.
 - **Confirm** calls `recordPaymentForPair({preview_only: false})`.
-- Deep-link: Settle Up Record button opens Step 1 with the pair pre-filled and `amount = min(pair_open, suggestion.amount)` in the editable field.
 
 ## 6. Create Settlement — bidirectional pair warning
 
@@ -437,9 +450,18 @@ Edit the component rendering the chip (grep `partially_paid` to find the sites; 
 - History filter adds `'reconciled'` alongside `'paid'` and `'cancelled'`.
 - Sort stays `created_at desc`.
 
-## 10. Household balances strip in `SettleUpCard`
+## 10. SettleUpCard — household balances strip + standalone Record payment
 
 Edit `src/components/SettleUpCard.tsx`.
+
+### 10a. Standalone "Record payment" button
+
+- New primary button at the top-right of the card header, next to **"All settlements"**.
+- Opens `RecordPaymentForPairModal` (item 5) in **variant B** — with the payer/payee picker.
+- This is the escape hatch for payments the greedy suggestion won't propose. Alan's ₱15k to Len against ST-0011 is the motivating case: greedy doesn't route money through Alan because his net is +₱1,002, so no Settle Up suggestion for him exists — but the stale ST-0011 Alan→Len row is still there and he still needs to be able to record against it. The picker + `pair_open` pre-fill handles it.
+- The per-suggestion Record link (variant A) still works the way it does today; this button is additive.
+
+### 10b. Household balances strip
 
 - New `householdBalances: UserBalance[]` prop (passed from `dashboard/page.tsx` — the same `balances` already computed for the hero).
 - Renders as a new section **above** "Suggested payments":
@@ -501,7 +523,16 @@ Add `vitest` + `@vitest/ui` as devDependencies, config at `vitest.config.ts`, np
 
 `src/lib/__tests__/record-payment-for-pair.test.ts`
 
-Can't hit real Postgres from the TS test suite, so this test runs against a **TypeScript port of the RPC's allocation loop** that both the real function and the UI preview will call. Keep the port in `src/lib/payment-allocation.ts` with a signature mirroring the RPC and import it from the RPC spec as the source of truth.
+Can't hit real Postgres from the TS test suite. A TS port of the RPC's allocation loop lives in `src/lib/payment-allocation.ts` **strictly for testing** — the RPC is the only code the running app calls, and the UI preview goes through the RPC with `preview_only: true`. The port carries a header comment:
+
+```ts
+/**
+ * TEST-ONLY port of record_payment_for_pair's allocation loop. The SQL
+ * function in migration 0007 is the source of truth; the running app
+ * never calls this file at runtime. If the RPC body changes, update this
+ * port and re-run Test B.
+ */
+```
 
 - Build a set of `SettlementBatchResult`-shaped rows spanning multiple pairs:
   - `A→B` ST-0001 remaining ₱100 (open)

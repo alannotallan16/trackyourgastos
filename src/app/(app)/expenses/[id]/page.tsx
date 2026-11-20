@@ -3,7 +3,7 @@ import Link from "next/link";
 import { ExpenseForm } from "@/components/ExpenseForm";
 import { DeleteExpenseButton } from "@/components/DeleteExpenseButton";
 import { createClient } from "@/lib/supabase/server";
-import { getCategories, getMerchantRules, getProfiles, getSplitPresets } from "@/lib/data";
+import { getCategories, getDistinctMerchants, getMerchantRules, getProfiles, getSplitPresets } from "@/lib/data";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { ChevronLeft } from "@/components/ui/icons";
 
@@ -11,13 +11,14 @@ export const dynamic = "force-dynamic";
 
 export default async function ExpenseDetailPage({ params }: { params: { id: string } }) {
   const supabase = createClient();
-  const [{ data: expense }, { data: splits }, profiles, categories, presets, rules] = await Promise.all([
+  const [{ data: expense }, { data: splits }, profiles, categories, presets, rules, merchants] = await Promise.all([
     supabase.from("expenses").select("*").eq("id", params.id).maybeSingle(),
     supabase.from("expense_splits").select("*").eq("expense_id", params.id),
     getProfiles(),
     getCategories(),
     getSplitPresets(),
-    getMerchantRules()
+    getMerchantRules(),
+    getDistinctMerchants()
   ]);
 
   if (!expense) notFound();
@@ -50,6 +51,7 @@ export default async function ExpenseDetailPage({ params }: { params: { id: stri
         categories={categories}
         presets={presets}
         merchantRules={rules}
+        merchantSuggestions={merchants}
         initial={{ ...(expense as any), splits: (splits as any) ?? [] }}
         receiptFileId={expense.receipt_file_id}
         receiptPreviewUrl={receiptUrl}

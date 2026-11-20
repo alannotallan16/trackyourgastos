@@ -21,6 +21,7 @@ interface Props {
   presets: SplitPreset[];
   merchantRules: MerchantRule[];
   duplicates?: DuplicateCandidate[];
+  merchantSuggestions?: string[];
   initial?: Partial<Expense> & { splits?: { user_id: string; split_type: SplitType; percentage: number | null; fixed_amount: number | null }[]; receipt_file_id?: string | null };
   receiptFileId?: string | null;
   receiptPreviewUrl?: string | null;
@@ -32,6 +33,7 @@ export function ExpenseForm({
   presets,
   merchantRules,
   duplicates = [],
+  merchantSuggestions = [],
   initial,
   receiptFileId,
   receiptPreviewUrl
@@ -193,8 +195,17 @@ export function ExpenseForm({
             value={merchant}
             onChange={(e) => setMerchant(e.target.value)}
             placeholder="e.g. Landers, Netflix, Pelco"
+            list="expense-merchants-datalist"
+            autoComplete="off"
             required
           />
+          {merchantSuggestions.length > 0 && (
+            <datalist id="expense-merchants-datalist">
+              {merchantSuggestions.map((m) => (
+                <option key={m} value={m} />
+              ))}
+            </datalist>
+          )}
         </div>
         <div>
           <label className="label">Total amount</label>

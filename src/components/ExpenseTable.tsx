@@ -32,6 +32,7 @@ interface Props {
   profiles: Profile[];
   categories: Category[];
   batches: SettlementBatch[];
+  merchantSuggestions?: string[];
 }
 
 type ExpenseStatus = "unpaid" | "in_settlement" | "partially_settled" | "settled";
@@ -73,7 +74,7 @@ const STATUS_FILTERS: { key: StatusFilter; label: string; color: "gray" | "orang
   { key: "settled", label: "Settled", color: "green" }
 ];
 
-export function ExpenseTable({ expenses, splits, profiles, categories, batches }: Props) {
+export function ExpenseTable({ expenses, splits, profiles, categories, batches, merchantSuggestions = [] }: Props) {
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [paidBy, setPaidBy] = useState("");
@@ -273,6 +274,13 @@ export function ExpenseTable({ expenses, splits, profiles, categories, batches }
 
   return (
     <div className="space-y-4">
+      {merchantSuggestions.length > 0 && (
+        <datalist id="expense-filter-merchants">
+          {merchantSuggestions.map((m) => (
+            <option key={m} value={m} />
+          ))}
+        </datalist>
+      )}
       <div className="flex flex-wrap items-center gap-2">
         {STATUS_FILTERS.map((f) => {
           const active = statusFilter === f.key;
@@ -345,7 +353,14 @@ export function ExpenseTable({ expenses, splits, profiles, categories, batches }
             </option>
           ))}
         </select>
-        <input className="input" placeholder="Merchant" value={merchant} onChange={(e) => setMerchant(e.target.value)} />
+        <input
+          className="input"
+          placeholder="Merchant"
+          value={merchant}
+          onChange={(e) => setMerchant(e.target.value)}
+          list="expense-filter-merchants"
+          autoComplete="off"
+        />
         <select className="input" value={currency} onChange={(e) => setCurrency(e.target.value)}>
           <option value="">Currency (any)</option>
           {currencies.map((c) => (

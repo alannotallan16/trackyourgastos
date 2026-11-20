@@ -60,13 +60,16 @@ export function CloseBatchDialog({ batchId, results, profiles, trigger }: Props)
       return;
     }
     start(async () => {
-      try {
-        await reconcileBatchRows({ batch_id: batchId, result_ids: Array.from(selected) });
-        setOpen(false);
-        router.refresh();
-      } catch (e: any) {
-        setErr(e?.message ?? "Failed to reconcile.");
+      const r = await reconcileBatchRows({
+        batch_id: batchId,
+        result_ids: Array.from(selected)
+      });
+      if (!r.ok) {
+        setErr(r.error);
+        return;
       }
+      setOpen(false);
+      router.refresh();
     });
   }
 

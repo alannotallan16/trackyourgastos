@@ -6,6 +6,7 @@ import { cancelBatch, recordPayment } from "../actions";
 import { formatMoney } from "@/lib/format";
 import { createClient } from "@/lib/supabase/client";
 import { Paperclip, Plus, X } from "@/components/ui/icons";
+import { PAYMENT_METHODS_DATALIST_ID, PaymentMethodsDatalist } from "@/lib/payment-methods";
 
 interface Props {
   batchId: string;
@@ -189,10 +190,12 @@ export function BatchDetailActions({
                 <label className="label">Method</label>
                 <input
                   className="input"
+                  list={PAYMENT_METHODS_DATALIST_ID}
                   placeholder="GCash, bank, cash…"
                   value={payment.payment_method}
                   onChange={(e) => setPayment({ ...payment, payment_method: e.target.value })}
                 />
+                <PaymentMethodsDatalist />
               </div>
               <div>
                 <label className="label">Reference #</label>

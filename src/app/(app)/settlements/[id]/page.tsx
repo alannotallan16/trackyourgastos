@@ -16,6 +16,7 @@ import { formatDate, formatMoney } from "@/lib/format";
 import { BatchDetailActions } from "./BatchDetailActions";
 import { BatchStatusBadge } from "../SettlementsClient";
 import { DeletePaymentButton } from "./DeletePaymentButton";
+import { CloseBatchDialog } from "@/components/settlements/CloseBatchDialog";
 
 export const dynamic = "force-dynamic";
 
@@ -115,7 +116,12 @@ export default async function BatchDetailPage({ params }: { params: { id: string
         />
       </div>
 
-      <BatchDetailActions batchId={batch.id} canCancel={canCancel} hasAnyPayment={hasAnyPayment} />
+      <div className="flex flex-wrap items-center gap-2">
+        <BatchDetailActions batchId={batch.id} canCancel={canCancel} hasAnyPayment={hasAnyPayment} />
+        {(batch.status === "open" || batch.status === "partially_paid") && (
+          <CloseBatchDialog batchId={batch.id} results={results} profiles={profiles} />
+        )}
+      </div>
 
       {/* Generated payments */}
       <div className="card p-0">

@@ -22,6 +22,12 @@ export interface UserMathRow {
   paid: number;
   owed: number;
   net: number;
+  // Unsettled-expense effect: restricted to expenses where EVERY split is
+  // still 'unpaid'. Mixed-status expenses (some settled, some unpaid) are
+  // excluded — see mixed_status_expenses_count on the report.
+  unsettled_paid: number;
+  unsettled_share: number;
+  unsettled_net: number;
 }
 
 export interface BatchPaymentCheck {
@@ -72,6 +78,12 @@ export interface BalanceMathReport {
   // batch's items / expenses are internally consistent but the results don't
   // match, the batch was created with buggy code or edited by hand.
   batch_recompute_issues: BatchRecomputeRow[];
+  // Unsettled-expense breakdown: for each person, how much do expenses whose
+  // every split is still `unpaid` shift their position? Sum across users must
+  // be zero (expenses redistribute money inside the household). Mixed-status
+  // expenses are excluded; their count is reported separately.
+  unsettled_sum_net: number;
+  mixed_status_expenses_count: number;
 }
 
 const R = (n: number) => Math.round(n * 100) / 100;
@@ -96,7 +108,10 @@ export function auditBalanceMath(
     settlement_received: 0,
     paid: 0,
     owed: 0,
-    net: 0
+    net: 0,
+    unsettled_paid: 0,
+    unsettled_share: 0,
+    unsettled_net: 0
   }));
   const usersById = new Map(users.map((u) => [u.user_id, u]));
 
@@ -125,6 +140,42 @@ export function auditBalanceMath(
     u.settlement_sent = R(u.settlement_sent);
     u.settlement_received = R(u.settlement_received);
   }
+
+  // ---------------------------------------------------------------------------
+  // Unsettled-expense breakdown. For each expense with EVERY split still
+  // `unpaid`, add payer.unsettled_paid += expense.total and each split's
+  // user.unsettled_share += split.calculated_amount. Mixed-status expenses
+  // are excluded, but we count them so the audit can report the exclusion.
+  // ---------------------------------------------------------------------------
+  const splitsByExpense = new Map<string, ExpenseSplit[]>();
+  for (const s of splits) {
+    if (!splitsByExpense.has(s.expense_id)) splitsByExpense.set(s.expense_id, []);
+    splitsByExpense.get(s.expense_id)!.push(s);
+  }
+  let mixed_status_expenses_count = 0;
+  for (const e of expenses) {
+    const es = splitsByExpense.get(e.id) ?? [];
+    if (es.length === 0) continue;
+    const allUnpaid = es.every((s) => s.settlement_status === "unpaid");
+    const allSameStatus = es.every((s) => s.settlement_status === es[0].settlement_status);
+    if (!allSameStatus) {
+      mixed_status_expenses_count += 1;
+      continue;
+    }
+    if (!allUnpaid) continue;
+    const payer = usersById.get(e.paid_by_user_id);
+    if (payer) payer.unsettled_paid += Number(e.total_amount);
+    for (const s of es) {
+      const u = usersById.get(s.user_id);
+      if (u) u.unsettled_share += Number(s.calculated_amount);
+    }
+  }
+  for (const u of users) {
+    u.unsettled_paid = R(u.unsettled_paid);
+    u.unsettled_share = R(u.unsettled_share);
+    u.unsettled_net = R(u.unsettled_paid - u.unsettled_share);
+  }
+  const unsettled_sum_net = R(users.reduce((a, u) => a + u.unsettled_net, 0));
 
   // Per-batch cross-check: do the recorded payments for each batch match the
   // amount_paid the results claim? A mismatch means a batch's status was
@@ -312,7 +363,9 @@ export function auditBalanceMath(
     batches_by_status,
     batch_payment_mismatches,
     settlement_impact,
-    batch_recompute_issues
+    batch_recompute_issues,
+    unsettled_sum_net,
+    mixed_status_expenses_count
   };
 }
 

@@ -164,6 +164,93 @@ export function BalanceMathSection({ report }: { report: BalanceMathReport }) {
         )}
       </div>
 
+      {/* Unsettled-expense effect per person */}
+      <div className="border-t border-slate-100 px-5 py-3">
+        <h3 className="text-sm font-semibold text-brand-navy">
+          Unsettled expense effect per person
+        </h3>
+        <p className="text-xs text-slate-500">
+          Restricted to expenses whose <em>every</em> split is still{" "}
+          <code>unpaid</code> — i.e. not yet included in any batch. Sum of
+          nets must be zero (expenses redistribute money inside the household).
+        </p>
+        <table className="mt-2 min-w-full text-sm">
+          <thead className="bg-slate-50">
+            <tr>
+              <th className="table-cell text-left text-xs uppercase tracking-wide text-slate-600">
+                Member
+              </th>
+              <th className="table-cell text-right text-xs uppercase tracking-wide text-slate-600">
+                Paid
+              </th>
+              <th className="table-cell text-right text-xs uppercase tracking-wide text-slate-600">
+                Share
+              </th>
+              <th className="table-cell text-right text-xs uppercase tracking-wide text-slate-600">
+                Net
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {report.users.map((u) => (
+              <tr key={u.user_id} className="hover:bg-slate-50">
+                <td className="table-cell font-medium text-brand-navy">{u.display_name}</td>
+                <td className="table-cell text-right tabular-nums text-slate-700">
+                  {formatMoney(u.unsettled_paid)}
+                </td>
+                <td className="table-cell text-right tabular-nums text-slate-700">
+                  {formatMoney(u.unsettled_share)}
+                </td>
+                <td
+                  className={`table-cell text-right tabular-nums font-semibold ${
+                    u.unsettled_net > 0.005
+                      ? "text-emerald-700"
+                      : u.unsettled_net < -0.005
+                        ? "text-red-600"
+                        : "text-slate-600"
+                  }`}
+                >
+                  {u.unsettled_net > 0.005 ? "+" : ""}
+                  {formatMoney(u.unsettled_net)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr className="bg-slate-50 text-xs text-slate-600">
+              <td className="table-cell font-medium">Sum of nets</td>
+              <td className="table-cell"></td>
+              <td className="table-cell"></td>
+              <td
+                className={`table-cell text-right tabular-nums font-semibold ${
+                  Math.abs(report.unsettled_sum_net) < 0.01 ? "text-brand-green" : "text-red-600"
+                }`}
+              >
+                {formatMoney(report.unsettled_sum_net)}
+              </td>
+            </tr>
+          </tfoot>
+        </table>
+        <p className="mt-2 text-xs text-slate-500">
+          Mixed-status expenses excluded:{" "}
+          <strong>
+            {report.mixed_status_expenses_count === 0
+              ? "None"
+              : report.mixed_status_expenses_count}
+          </strong>
+          {report.mixed_status_expenses_count > 0 && (
+            <>
+              {" "}
+              <span className="text-slate-400">
+                (some splits unpaid, others in a batch or settled — these are
+                skipped because partial inclusion would break the per-person
+                sum-to-zero check).
+              </span>
+            </>
+          )}
+        </p>
+      </div>
+
       {/* Write-side check: can we rederive each batch's results from its items? */}
       <div className="border-t border-slate-100 px-5 py-3">
         <h3 className="text-sm font-semibold text-brand-navy">Batch creation integrity</h3>

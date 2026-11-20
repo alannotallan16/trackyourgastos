@@ -322,6 +322,110 @@ export async function deletePayment(paymentId: string) {
 }
 
 // ---------------------------------------------------------------------------
+// Reconcile batch rows — thin wrapper over the reconcile_batch_rows RPC.
+//
+// All validation, status flipping, and rollup happen inside Postgres so the
+// whole operation is one transaction. The server action handles auth and
+// cache revalidation only.
+// ---------------------------------------------------------------------------
+const ReconcileSchema = z.object({
+  batch_id: z.string().uuid(),
+  result_ids: z.array(z.string().uuid()).min(1, "No rows selected.")
+});
+
+export type ReconcileBatchRowsPayload = z.infer<typeof ReconcileSchema>;
+
+export async function reconcileBatchRows(payload: ReconcileBatchRowsPayload) {
+  const parsed = ReconcileSchema.parse(payload);
+  const supabase = createClient();
+  const {
+    data: { user }
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated.");
+
+  const { error } = await supabase.rpc("reconcile_batch_rows", {
+    p_batch_id: parsed.batch_id,
+    p_result_ids: parsed.result_ids
+  });
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/settlements");
+  revalidatePath(`/settlements/${parsed.batch_id}`);
+  revalidatePath("/expenses");
+  revalidatePath("/dashboard");
+}
+
+// ---------------------------------------------------------------------------
+// Record payment for a (from, to) pair — walks open batch_results oldest-first.
+//
+// Fully delegated to the record_payment_for_pair RPC so the allocation + the
+// settlement_payments inserts + the status rollup all run in one Postgres
+// transaction. preview_only=true returns the allocation plan without writing.
+// ---------------------------------------------------------------------------
+const PairPaymentSchema = z.object({
+  from_user_id: z.string().uuid(),
+  to_user_id: z.string().uuid(),
+  amount: z.coerce.number().positive(),
+  payment_date: z.string().min(1),
+  payment_method: z.string().nullable().optional(),
+  notes: z.string().nullable().optional(),
+  reference_number: z.string().nullable().optional(),
+  attachment_path: z.string().nullable().optional(),
+  preview_only: z.boolean().default(false)
+});
+
+export type RecordPaymentForPairPayload = z.infer<typeof PairPaymentSchema>;
+
+export interface PairAllocationRow {
+  result_id: string;
+  batch_id: string;
+  batch_number: string;
+  apply_amount: number;
+  was_remaining: number;
+  will_leave: number;
+}
+
+export interface PairPaymentResult {
+  preview_only: boolean;
+  amount: number;
+  pair_open: number;
+  allocation: PairAllocationRow[];
+}
+
+export async function recordPaymentForPair(
+  payload: RecordPaymentForPairPayload
+): Promise<PairPaymentResult> {
+  const parsed = PairPaymentSchema.parse(payload);
+  const supabase = createClient();
+  const {
+    data: { user }
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated.");
+
+  const { data, error } = await supabase.rpc("record_payment_for_pair", {
+    p_from_user_id: parsed.from_user_id,
+    p_to_user_id: parsed.to_user_id,
+    p_amount: parsed.amount,
+    p_payment_date: parsed.payment_date,
+    p_payment_method: parsed.payment_method ?? null,
+    p_notes: parsed.notes ?? null,
+    p_reference_number: parsed.reference_number ?? null,
+    p_attachment_path: parsed.attachment_path ?? null,
+    p_created_by: user.id,
+    p_preview_only: parsed.preview_only
+  });
+  if (error) throw new Error(error.message);
+
+  if (!parsed.preview_only) {
+    revalidatePath("/settlements");
+    revalidatePath("/expenses");
+    revalidatePath("/dashboard");
+  }
+
+  return data as PairPaymentResult;
+}
+
+// ---------------------------------------------------------------------------
 // Status rollup helper — call after any payment is recorded or deleted.
 // Keeps the batch status and split statuses in sync with the result rows.
 // ---------------------------------------------------------------------------
